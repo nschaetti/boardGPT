@@ -2,9 +2,9 @@
 """
 Generate valid Othello games.
 
-This script generates valid Othello games and outputs them to a text file.
-Each line in the output file represents one game, with moves separated by commas.
-Moves are represented as column (a-h) + row (1-8), e.g., "d3", "e6".
+This script generates valid Othello games and outputs them to a binary file.
+Each game is represented as a sequence of move IDs, starting with a BOS token (ID 0).
+Moves are mapped from standard notation (e.g., "d3", "e6") to IDs (1-60).
 
 The script implements the complete Othello game rules, including:
 - Standard 8x8 board setup with initial four pieces in the center
@@ -14,12 +14,20 @@ The script implements the complete Othello game rules, including:
 - Move notation conversion between board coordinates and standard notation
 
 Usage:
-    python othello.py --num-games 100 --output games.txt
+    python othello.py --num-games 100 --output games.bin
 """
 
 import argparse
 import random
-from typing import List, Tuple, Set
+import numpy as np
+import pickle
+import sys
+from collections import Counter
+from typing import List, Tuple, Set, Dict
+from rich.console import Console
+from rich.text import Text
+import matplotlib.pyplot as plt
+from matplotlib.widgets import Button
 
 
 class OthelloBoard:
@@ -266,11 +274,28 @@ class OthelloBoard:
         """
         Check if the game is over.
         
-        The game is over when neither player has any valid moves.
+        The game is over when:
+        1. The board is full, or
+        2. Both players pass consecutively (neither player has any valid moves)
         
         Returns:
             bool: True if the game is over, False otherwise
         """
+        # Check if the board is full
+        is_full = True
+        for row in range(self.SIZE):
+            for col in range(self.SIZE):
+                if self.board[row][col] == self.EMPTY:
+                    is_full = False
+                    break
+            if not is_full:
+                break
+        
+        if is_full:
+            return True
+        # end if
+        
+        # Check if both players have no valid moves
         # First check if current player has valid moves
         if self.has_valid_moves():
             return False
@@ -331,30 +356,60 @@ class OthelloBoard:
         # Return the stored list of moves
         return self.moves
     # end get_moves_notation
+    
+    def record_pass(self) -> None:
+        """
+        Record a pass move when a player has no valid moves.
+        
+        In Othello, when a player has no valid moves, they must pass.
+        This method records a pass move in the game history.
+        """
+        # Record the pass move as "pass" in the move history
+        self.moves.append("pass")
+        
+        # Switch to the other player for the next turn
+        self.switch_player()
+    # end record_pass
 
 
-def generate_game() -> List[str]:
+def generate_game(max_moves: int = 60, seed: int = None) -> List[str]:
     """
     Generate a single valid Othello game and return the list of moves.
     
-    This function simulates a complete Othello game by making random valid moves
-    until the game is over (no player has valid moves). The game follows standard
-    Othello rules.
+    This function simulates an Othello game by making random valid moves
+    until either the game is over (no player has valid moves) or the maximum
+    number of moves is reached.
+    
+    Args:
+        max_moves (int): Maximum number of moves to make (default: 60)
+        seed (int, optional): Random seed for reproducibility. If None, no seed is set.
     
     Returns:
         List[str]: List of moves in standard notation (e.g., ['d3', 'c4', 'e3'])
     """
+    # Set random seed if provided
+    if seed is not None:
+        random.seed(seed)
+        np.random.seed(seed)
+    
     # Create a new Othello board with standard starting position
     board = OthelloBoard()
 
-    # Continue making moves until the game is over
-    while not board.is_game_over():
+    # Continue making moves until the game is over or max_moves is reached
+    while len(board.moves) < max_moves:
         # Get all valid moves for the current player
         valid_moves = board.get_valid_moves()
 
         if not valid_moves:
-            # No valid moves for current player, switch to other player
-            board.switch_player()
+            # No valid moves for current player, record a pass move
+            board.record_pass()
+            
+            # Check if the other player also has no valid moves (game is over)
+            if not board.has_valid_moves():
+                # Record a pass move for the other player as well
+                board.record_pass()
+                break
+            
             continue
         # end if
 
@@ -368,23 +423,32 @@ def generate_game() -> List[str]:
 # end generate_game
 
 
-def generate_games(num_games: int) -> List[List[str]]:
+def generate_games(num_games: int, max_moves: int = 60, seed: int = None) -> List[List[str]]:
     """
     Generate multiple Othello games.
     
     Args:
         num_games (int): Number of games to generate
+        max_moves (int): Maximum number of moves per game (default: 60)
+        seed (int, optional): Random seed for reproducibility. If None, no seed is set.
         
     Returns:
         List[List[str]]: List of games, where each game is a list of moves in standard notation
     """
+    # Set random seed if provided
+    if seed is not None:
+        random.seed(seed)
+        np.random.seed(seed)
+    
     # Initialize empty list to store the generated games
     games = []
     
     # Generate the specified number of games
-    for _ in range(num_games):
+    for i in range(num_games):
         # Generate a single game and add it to the list
-        game = generate_game()
+        # If seed is provided, use a different seed for each game to ensure variety
+        game_seed = None if seed is None else seed + i
+        game = generate_game(max_moves, game_seed)
         games.append(game)
     # end for
     
@@ -392,60 +456,601 @@ def generate_games(num_games: int) -> List[List[str]]:
 # end generate_games
 
 
+# Create a mapping from move notation to ID
+# The vocabulary size is 61: BOS token (0) + 60 possible moves (1-60)
+def create_move_mapping() -> Dict[str, int]:
+    """
+    Create a mapping from move notation to ID.
+    
+    The mapping includes:
+    - BOS (Beginning of Sequence) token with ID 0
+    - All possible moves on an 8x8 board with IDs 1-60
+    
+    Returns:
+        Dict[str, int]: Dictionary mapping move notation to ID
+    """
+    # Create a dictionary to store the mapping
+    move_to_id = {"BOS": 0}  # BOS token has ID 0
+    
+    # Generate all possible move notations (a1-h8)
+    id_counter = 1
+    for col in range(8):  # a-h
+        for row in range(8):  # 1-8
+            notation = chr(97 + col) + str(row + 1)
+            move_to_id[notation] = id_counter
+            id_counter += 1
+    
+    return move_to_id
+# end create_move_mapping
+
+
+def create_id_to_move_mapping() -> Dict[int, str]:
+    """
+    Create a mapping from ID to move notation.
+    
+    The mapping includes:
+    - BOS (Beginning of Sequence) token with ID 0
+    - All possible moves on an 8x8 board with IDs 1-60
+    
+    Returns:
+        Dict[int, str]: Dictionary mapping ID to move notation
+    """
+    # Get the move_to_id mapping
+    move_to_id = create_move_mapping()
+    
+    # Create the reverse mapping
+    id_to_move = {id: move for move, id in move_to_id.items()}
+    
+    return id_to_move
+# end create_id_to_move_mapping
+
+
+def convert_ids_to_notation(game: List[int]) -> List[str]:
+    """
+    Convert a game represented as a list of move IDs to a list of move notations.
+    
+    Args:
+        game (List[int]): Game as a list of move IDs
+        
+    Returns:
+        List[str]: Game as a list of move notations
+    """
+    # Get the id_to_move mapping
+    id_to_move = create_id_to_move_mapping()
+    
+    # Convert move IDs to move notations, skipping the BOS token (ID 0) if present
+    return [id_to_move[move_id] for move_id in game if move_id != 0]
+# end convert_ids_to_notation
+
+
 def save_games(games: List[List[str]], output_file: str) -> None:
     """
-    Save games to a text file, one game per line.
+    Save games to a binary file.
     
-    Each game is saved as a comma-separated list of moves in standard notation.
+    Each game is saved as a sequence of move IDs, starting with a BOS token (ID 0).
     
     Args:
         games (List[List[str]]): List of games to save
         output_file (str): Path to the output file
     """
-    # Open the output file for writing
-    with open(output_file, 'w') as f:
-        # Write each game as a comma-separated list of moves
-        for game in games:
-            f.write(','.join(game) + '\n')
+    # Create the move mapping
+    move_to_id = create_move_mapping()
+    
+    # Convert games to sequences of IDs
+    game_sequences = []
+    for game in games:
+        # Start with BOS token
+        sequence = [move_to_id["BOS"]]
+        # Add move IDs
+        for move in game:
+            if move != "pass":
+                sequence.append(move_to_id[move])
+            # end if
         # end for
+        game_sequences.append(sequence)
+    # end for
+    
+    # Save to binary file using pickle
+    with open(output_file, 'wb') as f:
+        pickle.dump(game_sequences, f)
     # end with
 # end save_games
 
 
+def load_games(input_file: str) -> List[List[int]]:
+    """
+    Load games from a binary file.
+    
+    Args:
+        input_file (str): Path to the input file
+        
+    Returns:
+        List[List[int]]: List of games, where each game is a list of move IDs
+    """
+    with open(input_file, 'rb') as f:
+        game_sequences = pickle.load(f)
+    return game_sequences
+
+def extract_game_by_index(games: List[List[int]], index: int) -> List[int]:
+    """
+    Extract a game by its index.
+    
+    Args:
+        games (List[List[int]]): List of games
+        index (int): Index of the game to extract
+        
+    Returns:
+        List[int]: The extracted game as a list of move IDs
+    """
+    if index < 0 or index >= len(games):
+        raise ValueError(f"Index {index} out of range. There are {len(games)} games.")
+    return games[index]
+
+def extract_games_by_length(games: List[List[int]], length: int) -> List[Tuple[int, List[int]]]:
+    """
+    Extract games with a specific length.
+    
+    Args:
+        games (List[List[int]]): List of games
+        length (int): Length of games to extract (including BOS token)
+        
+    Returns:
+        List[Tuple[int, List[int]]]: List of tuples (index, game) with the specified length
+    """
+    return [(i, game) for i, game in enumerate(games) if len(game) == length]
+
+
+def view_game(game_file: str, game_index: int) -> None:
+    """
+    Display an interactive visualization of an Othello game using matplotlib.
+    
+    Args:
+        game_file (str): Path to the binary file containing games
+        game_index (int): Index of the game to view
+    """
+    # Load games from the input file
+    print(f"Loading games from {game_file}...")
+    games = load_games(game_file)
+    print(f"Loaded {len(games)} games.")
+    
+    # Extract the game at the specified index
+    try:
+        game_moves = extract_game_by_index(games, game_index)
+        print(f"Viewing game at index {game_index} with {len(game_moves) - 1} moves.")
+    except ValueError as e:
+        print(f"Error: {e}")
+        return
+    
+    # Convert move IDs to notations (skipping BOS token)
+    move_notations = convert_ids_to_notation(game_moves)
+    
+    # Create a board to replay the game
+    board = OthelloBoard()
+    
+    # Current move index (start at -1 to show initial board)
+    current_move = -1
+    
+    # List to store the player for each move
+    move_players = []
+    
+    # Create the figure and axes for the board
+    fig, ax = plt.subplots(figsize=(8, 8))
+    fig.canvas.manager.set_window_title(f"Othello Game Viewer - Game {game_index}")
+    
+    # Create button axes
+    prev_button_ax = plt.axes([0.2, 0.05, 0.15, 0.05])
+    next_button_ax = plt.axes([0.65, 0.05, 0.15, 0.05])
+    
+    # Create buttons
+    prev_button = Button(prev_button_ax, 'Previous')
+    next_button = Button(next_button_ax, 'Next')
+    
+    def draw_board():
+        """Draw the current state of the board."""
+        ax.clear()
+        
+        # Draw the green background
+        ax.add_patch(plt.Rectangle((0, 0), 8, 8, color='green'))
+        
+        # Draw the grid lines
+        for i in range(9):
+            ax.plot([i, i], [0, 8], 'k-', lw=1)
+            ax.plot([0, 8], [i, i], 'k-', lw=1)
+        
+        # Draw the pieces
+        for row in range(8):
+            for col in range(8):
+                if board.board[row][col] == board.BLACK:
+                    ax.add_patch(plt.Circle((col + 0.5, row + 0.5), 0.4, color='black'))
+                elif board.board[row][col] == board.WHITE:
+                    ax.add_patch(plt.Circle((col + 0.5, row + 0.5), 0.4, color='white', edgecolor='black'))
+        
+        # Add column and row labels
+        ax.set_xticks([i + 0.5 for i in range(8)])
+        ax.set_yticks([i + 0.5 for i in range(8)])
+        ax.set_xticklabels(['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'])
+        ax.set_yticklabels(['1', '2', '3', '4', '5', '6', '7', '8'])
+        
+        # Set title with current move information
+        if current_move == -1:
+            ax.set_title("Initial Board")
+        else:
+            move_text = move_notations[current_move]
+            
+            # Check if this is a pass move
+            if move_text == "pass":
+                player = "Black" if board.current_player == board.WHITE else "White"
+                ax.set_title(f"Move {current_move + 1}: {player} passes")
+            else:
+                if current_move < len(move_players):
+                    # Use the stored player information
+                    player = "Black" if move_players[current_move] == board.BLACK else "White"
+                    
+                    # Check if there was a pass before this move
+                    if current_move > 0 and current_move - 1 < len(move_players):
+                        prev_player = "Black" if move_players[current_move - 1] == board.BLACK else "White"
+                        # If the same player made two consecutive moves, it means the other player passed
+                        if player == prev_player:
+                            opposite_player = "White" if player == "Black" else "Black"
+                            ax.set_title(f"Move {current_move + 1}: {opposite_player} passed, {player} plays {move_text}")
+                        else:
+                            ax.set_title(f"Move {current_move + 1}: {player} plays {move_text}")
+                    else:
+                        ax.set_title(f"Move {current_move + 1}: {player} plays {move_text}")
+                else:
+                    # If we need to use the fallback method, we should ensure the move_players list is populated
+                    # by replaying the game up to this point
+                    temp_board = OthelloBoard()
+                    temp_move_players = []
+                    
+                    # Replay all moves up to the current one
+                    for i in range(current_move + 1):
+                        notation = move_notations[i]
+                        
+                        # Skip pass moves in replay
+                        if notation == "pass":
+                            temp_board.record_pass()
+                            continue
+                            
+                        row, col = temp_board.notation_to_coords(notation)
+                        
+                        # Check if the move is valid for the current player
+                        if not temp_board.is_valid_move(row, col):
+                            # If the move is not valid, the current player must pass
+                            temp_board.record_pass()
+                        
+                        # Store the current player before making the move
+                        temp_move_players.append(temp_board.current_player)
+                        
+                        # Make the move
+                        temp_board.make_move(row, col)
+                    
+                    # Now we can determine the correct player for this move
+                    if current_move < len(temp_move_players):
+                        player = "Black" if temp_move_players[current_move] == board.BLACK else "White"
+                        ax.set_title(f"Move {current_move + 1}: {player} plays {move_text}")
+                    else:
+                        # If we still can't determine the player, we need to be more careful
+                        # Replay the game from the beginning to determine the correct player
+                        replay_board = OthelloBoard()
+                        
+                        # Track the player for each move in the sequence
+                        # We need to check if there are any passes in the sequence
+                        # that might affect the current player
+                        i = 0
+                        while i < len(move_notations):
+                            # If we've reached the current move, break
+                            if i == current_move:
+                                break
+                                
+                            prev_notation = move_notations[i]
+                            
+                            # Handle pass moves
+                            if prev_notation == "pass":
+                                replay_board.record_pass()
+                                i += 1
+                                continue
+                            
+                            # Handle regular moves
+                            prev_row, prev_col = replay_board.notation_to_coords(prev_notation)
+                            
+                            # Check if the move is valid for the current player
+                            if not replay_board.is_valid_move(prev_row, prev_col):
+                                # If the move is not valid, the current player must pass
+                                replay_board.record_pass()
+                                
+                                # Check again if the move is valid for the new current player
+                                if not replay_board.is_valid_move(prev_row, prev_col):
+                                    print(f"Error: Move {prev_notation} is not valid for either player.")
+                                    i += 1
+                                    continue
+                            
+                            # Make the move
+                            replay_board.make_move(prev_row, prev_col)
+                            i += 1
+                        
+                        # The current player before making the move is the one who plays
+                        player = "Black" if replay_board.current_player == replay_board.BLACK else "White"
+                        ax.set_title(f"Move {current_move + 1}: {player} plays {move_text}")
+        
+        # Set limits and aspect
+        ax.set_xlim(0, 8)
+        ax.set_ylim(0, 8)
+        ax.set_aspect('equal')
+        
+        # Update the figure
+        fig.canvas.draw_idle()
+    
+    def on_prev_click(event):
+        """
+        Handle click on Previous button.
+        """
+        nonlocal current_move, board, move_players
+        
+        if current_move > -1:
+            # Reset the board and replay up to the previous move
+            board = OthelloBoard()
+            current_move -= 1
+            
+            # Clear the move_players list
+            move_players = []
+            
+            # Replay all moves up to the current one
+            for i in range(current_move + 1):
+                notation = move_notations[i]
+                row, col = board.notation_to_coords(notation)
+                
+                # Check if the move is valid for the current player
+                if not board.is_valid_move(row, col):
+                    # If the move is not valid, the current player must pass
+                    # Store the current player (who is passing) in move_players
+                    move_players.append(board.current_player)
+                    
+                    # Record the pass and switch to the other player
+                    board.record_pass()
+                    
+                    # Now check if the move is valid for the new current player
+                    if not board.is_valid_move(row, col):
+                        print(f"Error: Move {notation} is not valid for either player.")
+                        continue
+                
+                # Store the current player before making the move
+                move_players.append(board.current_player)
+                
+                board.make_move(row, col)
+            # end for
+            draw_board()
+    
+    def on_next_click(event):
+        """
+        Handle click on Next button.
+        """
+        nonlocal current_move, board, move_players
+        
+        if current_move < len(move_notations) - 1:
+            current_move += 1
+            notation = move_notations[current_move]
+            row, col = board.notation_to_coords(notation)
+            
+            # Check if the move is valid for the current player
+            if not board.is_valid_move(row, col):
+                # If the move is not valid, the current player must pass
+                # Store the current player (who is passing) in move_players
+                if current_move >= len(move_players):
+                    move_players.append(board.current_player)
+                
+                # Record the pass and switch to the other player
+                board.record_pass()
+                
+                # Now check if the move is valid for the new current player
+                if not board.is_valid_move(row, col):
+                    print(f"Error: Move {notation} is not valid for either player.")
+                    current_move -= 1  # Revert the move index
+                    return
+            
+            # Store the current player before making the move
+            if current_move >= len(move_players):
+                move_players.append(board.current_player)
+            
+            board.make_move(row, col)
+            
+            draw_board()
+    
+    # Connect button events
+    prev_button.on_clicked(on_prev_click)
+    next_button.on_clicked(on_next_click)
+    
+    # Initial draw
+    draw_board()
+    
+    # Show the plot
+    plt.tight_layout()
+    plt.show()
+
 def main():
     """
-    Main function to parse arguments and generate games.
+    Main function to parse arguments and generate or extract games.
     
-    Command-line arguments:
+    Command-line arguments for generating games:
         --num-games: Number of games to generate (default: 10)
-        --output: Output file path (default: othello_games.txt)
+        --max-moves: Maximum number of moves per game (default: 60)
+        --output: Output file path (default: othello_games.bin)
+        --seed: Random seed for reproducibility
+        
+    Command-line arguments for extracting games:
+        --extract: Extract games from a binary file
+        --input: Input file path
+        --index: Index of the game to extract
+        --length: Length of games to extract
+        --output: Output file path for extracted games
     """
     # Set up command-line argument parser
-    parser = argparse.ArgumentParser(description='Generate valid Othello games.')
-    parser.add_argument(
+    parser = argparse.ArgumentParser(description='Generate or extract valid Othello games.')
+    
+    # Create subparsers for different commands
+    subparsers = parser.add_subparsers(dest='command', help='Command to execute')
+    
+    # Parser for generate command
+    generate_parser = subparsers.add_parser('generate', help='Generate Othello games')
+    generate_parser.add_argument(
         '--num-games',
         type=int,
         default=10,
         help='Number of games to generate (default: 10)'
     )
-
-    parser.add_argument(
-        '--output',
-        type=str,
-        default='othello_games.txt',
-        help='Output file path (default: othello_games.txt)'
+    
+    generate_parser.add_argument(
+        '--max-moves',
+        type=int,
+        default=60,
+        help='Maximum number of moves per game (default: 60)'
     )
 
+    generate_parser.add_argument(
+        '--output',
+        type=str,
+        default='othello_games.bin',
+        help='Output file path (default: othello_games.bin)'
+    )
+    
+    generate_parser.add_argument(
+        '--seed',
+        type=int,
+        default=None,
+        help='Random seed for reproducibility'
+    )
+    
+    # Parser for extract command
+    extract_parser = subparsers.add_parser('extract', help='Extract games from a binary file')
+    extract_parser.add_argument(
+        '--input',
+        type=str,
+        required=True,
+        help='Input file path'
+    )
+    
+    # Output option removed as per requirement - no file output for extract
+    
+    # Make index and length mutually exclusive
+    group = extract_parser.add_mutually_exclusive_group(required=True)
+    group.add_argument(
+        '--index',
+        type=int,
+        help='Index of the game to extract'
+    )
+    
+    group.add_argument(
+        '--length',
+        type=int,
+        help='Length of games to extract (including BOS token)'
+    )
+    
+    # Parser for view command
+    view_parser = subparsers.add_parser('view', help='View an Othello game with a graphical interface')
+    view_parser.add_argument(
+        '--input',
+        type=str,
+        required=True,
+        help='Input file path containing games'
+    )
+    view_parser.add_argument(
+        '--index',
+        type=int,
+        required=True,
+        help='Index of the game to view'
+    )
+    
+    # For backward compatibility, if no command is specified, assume generate
+    if len(sys.argv) > 1 and sys.argv[1] not in ['generate', 'extract', 'view']:
+        # Add the generate command
+        sys.argv.insert(1, 'generate')
+    
     # Parse command-line arguments
     args = parser.parse_args()
+    
+    # If no command is specified, default to generate
+    if args.command is None:
+        args.command = 'generate'
+    
+    # Execute the appropriate command
+    if args.command == 'generate':
+        # Generate the specified number of games
+        print(f"Generating {args.num_games} Othello games (max {args.max_moves} moves per game)...")
+        if args.seed is not None:
+            print(f"Using random seed: {args.seed}")
+        
+        games = generate_games(args.num_games, args.max_moves, args.seed)
 
-    # Generate the specified number of games
-    print(f"Generating {args.num_games} Othello games...")
-    games = generate_games(args.num_games)
+        # Calculate and display statistics of game lengths
+        game_lengths = [len(game) for game in games]
+        length_counter = Counter(game_lengths)
+        
+        print("\nGame Length Statistics:")
+        print(f"Total games: {len(games)}")
+        print(f"Average length: {sum(game_lengths) / len(games):.2f} moves")
+        print(f"Minimum length: {min(game_lengths)} moves")
+        print(f"Maximum length: {max(game_lengths)} moves")
+        
+        print("\nLength distribution:")
+        for length in sorted(length_counter.keys()):
+            count = length_counter[length]
+            percentage = (count / len(games)) * 100
+            print(f"{length} moves: {count} games ({percentage:.1f}%)")
 
-    # Save the generated games to the output file
-    save_games(games, args.output)
-    print(f"Games saved to {args.output}")
+        # Save the generated games to the output file
+        save_games(games, args.output)
+        print(f"\nGames saved to {args.output}")
+    
+    elif args.command == 'extract':
+        # Create a Rich console
+        console = Console()
+        
+        # Load games from the input file
+        console.print(f"Loading games from {args.input}...")
+        games = load_games(args.input)
+        console.print(f"Loaded {len(games)} games.")
+        
+        # Extract games based on the specified criteria
+        if args.index is not None:
+            # Extract a single game by index
+            try:
+                extracted_game = extract_game_by_index(games, args.index)
+                # Create a list with a single tuple (index, game)
+                extracted_games_with_indices = [(args.index, extracted_game)]
+                console.print(f"Extracted game at index {args.index} with length {len(extracted_game)}.")
+            except ValueError as e:
+                console.print(f"Error: {e}", style="bold red")
+                return
+        else:
+            # Extract games by length
+            extracted_games_with_indices = extract_games_by_length(games, args.length)
+            console.print(f"Extracted {len(extracted_games_with_indices)} games with length {args.length}.")
+        
+        # Determine the number of digits needed for zero padding
+        max_index = max([idx for idx, _ in extracted_games_with_indices]) if extracted_games_with_indices else 0
+
+        # Set a minimum padding of 3 digits
+        padding = max(3, len(str(max_index)))
+        
+        # Display the extracted games in the terminal with A-H, 1-8 notation
+        console.print("\nExtracted games in A-H, 1-8 notation:", style="bold")
+        for game_idx, game in extracted_games_with_indices:
+            # Convert move IDs to move notations
+            game_notation = convert_ids_to_notation(game)
+            
+            # Create a formatted text with the index in a different color
+            text = Text()
+            text.append(f"Game {game_idx:0{padding}d}: ", style="bold cyan")
+            text.append(' '.join(game_notation))
+            
+            # Display the game
+            console.print(text)
+        
+        # No longer saving extracted games to a file - only displaying in terminal
+    
+    elif args.command == 'view':
+        # Launch the interactive game viewer
+        view_game(args.input, args.index)
 # end main
 
 

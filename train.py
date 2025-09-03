@@ -29,11 +29,14 @@ $ torchrun --nproc_per_node=8 --nnodes=2 --node_rank=1 --master_addr=123.456.123
 (If your cluster does not have Infiniband interconnect prepend NCCL_IB_DISABLE=1)
 """
 
+# Imports
 import os
 import time
+import random
 import math
 import pickle
 from contextlib import nullcontext
+from typing import List
 
 import numpy as np
 import torch
@@ -63,15 +66,17 @@ wandb_project = 'owt'            # Project name for wandb
 wandb_run_name = 'gpt2'          # Run name for wandb
 
 # Data settings
-dataset = 'openwebtext'          # Dataset name
-gradient_accumulation_steps = 5 * 8  # Used to simulate larger batch sizes
-batch_size = 12                  # If gradient_accumulation_steps > 1, this is the micro-batch size
-block_size = 1024                # Context size for the model
+board_game = "othello"
+data_filename = "synthetic.bin"
+dataset = 'openwebtext'                 # Dataset name
+gradient_accumulation_steps = 5 * 8     # Used to simulate larger batch sizes
+batch_size = 12                         # If gradient_accumulation_steps > 1, this is the micro-batch size
+block_size = 61                       # Context size for the model
 
 # Model architecture settings
-n_layer = 12                     # Number of transformer layers
-n_head = 12                      # Number of attention heads
-n_embd = 768                     # Embedding dimension
+n_layer = 8                      # Number of transformer layers
+n_head = 8                       # Number of attention heads
+n_embd = 512                     # Embedding dimension
 dropout = 0.0                    # Dropout rate (0 for pretraining, try 0.1+ for finetuning)
 bias = False                     # Whether to use bias in LayerNorm and Linear layers
 
@@ -94,20 +99,25 @@ backend = 'nccl'                 # Backend for distributed training ('nccl', 'gl
 
 # System settings
 device = 'cuda'                  # Device to use ('cpu', 'cuda', 'cuda:0', 'cuda:1', 'mps' on macbooks)
+
 # Choose appropriate dtype based on hardware capabilities
 dtype = 'bfloat16' if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else 'float16'
 compile = True                   # Whether to use PyTorch 2.0 compilation for speed
+
 
 # -----------------------------------------------------------------------------
 # Configuration handling
 # -----------------------------------------------------------------------------
 # Collect all config keys for logging
 config_keys = [k for k,v in globals().items() if not k.startswith('_') and isinstance(v, (int, float, bool, str))]
+
 # Load overrides from command line or config file
 exec(open('configurator.py').read())
+
 # Create config dictionary for logging
 config = {k: globals()[k] for k in config_keys}
 # -----------------------------------------------------------------------------
+
 
 def setup_training_environment():
     """
@@ -128,7 +138,7 @@ def setup_training_environment():
     ddp_local_rank = None
     ddp_world_size = None
     master_process = True
-    seed_offset = 0setup_training_environment
+    seed_offset = 0
     
     if ddp:
         # Initialize the distributed process group
@@ -176,6 +186,45 @@ def setup_training_environment():
     
     return ddp, master_process, seed_offset, ddp_world_size, ddp_local_rank, device, device_type, ctx
 # end setup_training_environment
+
+
+def get_board_batch(split):
+    """
+    ...
+    """
+    # Data dir
+    data_dir = os.path.join("data", board_game)
+
+    # Load data
+    # game_sequences is a list of list of ints (List[List[int])
+    with open(os.path.join(data_dir, data_filename), 'rb') as f:
+        game_sequences: List[List[int]] = pickle.load(f)
+    # end with
+
+    # Concatenate games sequences
+    game_sequences: List[int] = [x for sublist in game_sequences for x in sublist]
+
+    # Get the selection
+    game_sequences = random.sample(game_sequences, batch_size)
+
+    # Sample random sequence length
+    ix = [random.randint(0, len(game_sequences)-block_size) for _ in range(batch_size)]
+
+    # Select subsequences
+    x = torch.stack([torch.tensor(game_sequences[i:i+block_size], dtype=torch.long) for i in ix])
+    y = torch.stack([torch.tensor(game_sequences[i+1:i+1+block_size], dtype=torch.long) for i in ix])
+
+    # Device type
+    if device_type == 'cuda':
+        x, y = x.pin_memory().to(device, non_blocking=True), y.pin_memory().to(device, non_blocking=True)
+    else:
+        x, y = x.to(device), y.to(device)
+    # end if
+
+    return x, y
+# end def get_board_batch
+
+
 
 def get_batch(split):
     """
@@ -261,7 +310,8 @@ def initialize_model():
         if meta_vocab_size is None:
             print("defaulting to vocab_size of GPT-2 to 50304 (50257 rounded up for efficiency)")
         # end if
-        
+
+        # Create the model
         model_args['vocab_size'] = meta_vocab_size if meta_vocab_size is not None else 50304
         gptconf = GPTConfig(**model_args)
         model = GPT(gptconf)
@@ -292,7 +342,8 @@ def initialize_model():
             if k.startswith(unwanted_prefix):
                 state_dict[k[len(unwanted_prefix):]] = state_dict.pop(k)
         # end for
-        
+
+        # Load weights
         model.load_state_dict(state_dict)
         iter_num = checkpoint['iter_num']
         best_val_loss = checkpoint['best_val_loss']
@@ -408,7 +459,12 @@ def setup_optimizer(model, checkpoint=None):
     return optimizer, scaler
 # end def setup_optimizer
 
-def save_checkpoint(model, optimizer, iter_num, best_val_loss):
+def save_checkpoint(
+        model,
+        optimizer,
+        iter_num,
+        best_val_loss
+):
     """
     Save a checkpoint of the model and optimizer state.
     
@@ -437,7 +493,7 @@ def main():
     """
     global model, ctx, device, device_type
     
-    # Set up the training environmentmain
+    # Set up the training environment main
     ddp, master_process, seed_offset, ddp_world_size, ddp_local_rank, device, device_type, ctx = setup_training_environment()
     
     # Initialize the model
@@ -445,9 +501,6 @@ def main():
     
     # Set up the optimizer and gradient scaler
     optimizer, scaler = setup_optimizer(model)
-    
-    # Free up memory
-    checkpoint = None
     
     # Compile the model if requested (requires PyTorch 2.0+)
     if compile:
@@ -458,13 +511,20 @@ def main():
     
     # Wrap model into DDP container for distributed training
     if ddp:
-        model = DDP(model, device_ids=[ddp_local_rank] if ddp_local_rank is not None else None)
+        model = DDP(
+            model,
+            device_ids=[ddp_local_rank] if ddp_local_rank is not None else None
+        )
     # end if
     
     # Set up wandb logging if enabled
     if wandb_log and master_process:
         import wandb
-        wandb.init(project=wandb_project, name=wandb_run_name, config=config)
+        wandb.init(
+            project=wandb_project,
+            name=wandb_run_name,
+            config=config
+        )
     # end if
     
     # Training loop initialization
