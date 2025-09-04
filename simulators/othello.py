@@ -31,6 +31,63 @@ from matplotlib.widgets import Button
 
 
 class OthelloBoard:
+
+    def __init__(
+            self,
+            size: int = 8,
+            empty: int = 0,
+            black: int = 1,
+            white: int = 2
+    ):
+        """
+        ...
+        """
+        # Set storage
+        self.board = [[empty for _ in range(size)] for _ in range(size)]
+
+        # Set up the initial four pieces in the center in the standard Othello pattern
+        self.board[3][3] = white  # d4 in standard notation
+        self.board[3][4] = black  # e4 in standard notation
+        self.board[4][3] = black  # d5 in standard notation
+        self.board[4][4] = white  # e5 in standard notation
+
+        # Possible values
+        self.values = [empty, black, white]
+
+        # Board history
+        self.history: List[List[Tuple[int, int, int]]] = []
+        self.current_history: List[Tuple[int, int, int]] = []
+    # end __init__
+
+    # Set pieces
+    def set_piece(self, row: int, col: int, value: int) -> None:
+        """
+        ...
+        """
+        assert value in self.values, f"Expected {value} to be in {self.values}"
+        self.board[row][col] = value
+        self.current_history.append((row, col, value))
+    # end def set_piece
+
+    def get_piece(self, row: int, col: int) -> int:
+        """
+        ...
+        """
+        return self.board[row][col]
+    # end def get_piece
+
+    def push_history(self):
+        """
+        ...
+        """
+        self.history.append(self.current_history)
+        self.current_history = []
+    # end def push_history
+
+# end OthelloBoard
+
+
+class OthelloGame:
     """
     Represents an Othello game board and implements game rules.
     
@@ -72,31 +129,26 @@ class OthelloBoard:
         Black player moves first, as per standard Othello rules.
         """
         # Create an empty 8x8 board filled with EMPTY (0) values
-        self.board = [[self.EMPTY for _ in range(self.SIZE)] for _ in range(self.SIZE)]
-        # end for
-
-        # Set up the initial four pieces in the center in the standard Othello pattern
-        self.board[3][3] = self.WHITE  # d4 in standard notation
-        self.board[3][4] = self.BLACK  # e4 in standard notation
-        self.board[4][3] = self.BLACK  # d5 in standard notation
-        self.board[4][4] = self.WHITE  # e5 in standard notation
+        self.board = OthelloBoard(self.SIZE, self.EMPTY)
 
         # Black moves first according to standard Othello rules
         self.current_player = self.BLACK
 
         # Keep track of moves made in standard notation (e.g., 'd3', 'e6')
-        self.moves = []
-        self.moves_player = []
+        self.moves: List[str] = []
+        self.moves_player: List[int] = []
     # end __init__
+
+    # region PUBLIC
 
     def get_valid_moves(self) -> List[Tuple[int, int]]:
         """
         Return a list of valid moves for the current player.
-        
+
         A valid move is one where placing a piece would flip at least one
         of the opponent's pieces. This method checks all board positions
         and returns coordinates of all valid moves.
-        
+
         Returns:
             List[Tuple[int, int]]: A list of (row, col) tuples representing valid move positions
         """
@@ -119,24 +171,24 @@ class OthelloBoard:
     def is_valid_move(self, row: int, col: int) -> bool:
         """
         Check if placing a piece at (row, col) is a valid move for the current player.
-        
+
         A valid move in Othello must satisfy two conditions:
         1. The cell must be empty
         2. The move must flip at least one opponent's piece
-        
-        To flip an opponent's piece, there must be a straight line (horizontal, 
-        vertical, or diagonal) of opponent's pieces, with the current player's 
+
+        To flip an opponent's piece, there must be a straight line (horizontal,
+        vertical, or diagonal) of opponent's pieces, with the current player's
         piece at the other end.
-        
+
         Args:
             row (int): Row index (0-7)
             col (int): Column index (0-7)
-            
+
         Returns:
             bool: True if the move is valid, False otherwise
         """
         # Rule 1: The cell must be empty
-        if self.board[row][col] != self.EMPTY:
+        if self.board.get_piece(row, col) != self.EMPTY:
             return False
         # end if
 
@@ -148,25 +200,24 @@ class OthelloBoard:
         for dr, dc in self.DIRECTIONS:
             # Move one step in the current direction
             r, c = row + dr, col + dc
-            
+
             # Check if we have at least one opponent's piece in this direction
-            if (0 <= r < self.SIZE and 0 <= c < self.SIZE and
-                    self.board[r][c] == opponent):
-                
+            if 0 <= r < self.SIZE and 0 <= c < self.SIZE and self.board.get_piece(r, c) == opponent:
+
                 # Continue in this direction looking for our own piece
                 r += dr
                 c += dc
                 while 0 <= r < self.SIZE and 0 <= c < self.SIZE:
-                    if self.board[r][c] == self.EMPTY:
+                    if self.board.get_piece(r, c) == self.EMPTY:
                         # Empty cell, no flip possible in this direction
                         break
                     # end if
-                    
-                    if self.board[r][c] == self.current_player:
+
+                    if self.board.get_piece(r, c) == self.current_player:
                         # Found our own piece at the other end, this is a valid move
                         return True
                     # end if
-                    
+
                     # Continue in this direction
                     r += dr
                     c += dc
@@ -202,8 +253,7 @@ class OthelloBoard:
         # end if
 
         # Place the current player's piece at the specified position
-        self.board[row][col] = self.current_player
-        self.moves_player.append(self.current_player)
+        self.board.set_piece(row, col, self.current_player)
 
         # Determine the opponent's piece color for flipping
         opponent = self.WHITE if self.current_player == self.BLACK else self.BLACK
@@ -217,36 +267,41 @@ class OthelloBoard:
             r, c = row + dr, col + dc
             
             # Collect all opponent's pieces in this direction
-            while (0 <= r < self.SIZE and 0 <= c < self.SIZE and
-                   self.board[r][c] == opponent):
+            while 0 <= r < self.SIZE and 0 <= c < self.SIZE and self.board.get_piece(r, c) == opponent:
                 to_flip.append((r, c))
                 r += dr
                 c += dc
 
                 # If we reach the edge or an empty cell, no flip in this direction
-                if not (0 <= r < self.SIZE and 0 <= c < self.SIZE) or self.board[r][c] == self.EMPTY:
+                if not (0 <= r < self.SIZE and 0 <= c < self.SIZE) or self.board.get_piece(r, c) == self.EMPTY:
                     to_flip = []  # Clear the list as we can't flip these pieces
                     break
                 # end if
 
                 # If we reach our own piece, we can flip all pieces in between
-                if self.board[r][c] == self.current_player:
+                if self.board.get_piece(r, c) == self.current_player:
                     break
                 # end if
             # end while
 
             # Flip all opponent's pieces that were captured
             for flip_r, flip_c in to_flip:
-                self.board[flip_r][flip_c] = self.current_player
+                self.board.set_piece(flip_r, flip_c, self.current_player)
             # end for
         # end for
 
         # Record the move in standard notation (e.g., 'e4')
         move_notation = self.coords_to_notation(row, col)
+
+        # Add move and player
         self.moves.append(move_notation)
+        self.moves_player.append(self.current_player)
+
+        # Push board modification into history
+        self.board.push_history()
 
         # Switch to the other player for the next turn
-        self.current_player = self.WHITE if self.current_player == self.BLACK else self.BLACK
+        self.switch_player()
 
         return True
     # end make_move
@@ -287,7 +342,7 @@ class OthelloBoard:
         is_full = True
         for row in range(self.SIZE):
             for col in range(self.SIZE):
-                if self.board[row][col] == self.EMPTY:
+                if self.board.get_piece(row, col) == self.EMPTY:
                     is_full = False
                     break
             if not is_full:
@@ -348,7 +403,7 @@ class OthelloBoard:
         return row, col
     # end notation_to_coords
 
-    def get_moves_notation(self) -> List[str]:
+    def get_moves(self) -> List[str]:
         """
         Return the list of moves made in the game in standard notation.
         
@@ -358,21 +413,59 @@ class OthelloBoard:
         # Return the stored list of moves
         return self.moves
     # end get_moves_notation
-    
-    def record_pass(self) -> None:
-        """
-        Record a pass move when a player has no valid moves.
-        
-        In Othello, when a player has no valid moves, they must pass.
-        This method records a pass move in the game history.
-        """
-        # Record the pass move as "pass" in the move history
-        self.moves.append("pass")
-        self.moves_player.append(self.current_player)
 
-        # Switch to the other player for the next turn
-        self.switch_player()
-    # end record_pass
+    def set_moves(
+            self,
+            moves: List[str],
+            moves_player: List[int],
+    ) -> None:
+        """
+        ...
+        """
+        self.moves = moves
+        self.moves_player = moves_player
+    # end set_moves
+
+    # endregion PUBLIC
+
+    def __len__(self):
+        """
+        Return the number of moves made in the game in standard notation.
+        """
+        return len(self.moves)
+    # end def __len__
+
+    @staticmethod
+    def load_moves(moves: List[str]) -> 'OthelloGame':
+        """
+        ...
+        """
+        # Instance class
+        board = OthelloGame()
+
+        # For each move
+        for m in moves:
+            # Transform to coordinates
+            row, col = board.notation_to_coords(m)
+
+            # Check if the move is valid
+            if board.is_valid_move(row, col):
+                # Make to move
+                board.make_move(row, col)
+            else:
+                # Switch player
+                board.switch_player()
+
+                # Check that the move is valid
+                assert board.is_valid_move(row, col), f"Invalid move detected: {m}"
+
+                # Make the move
+                board.make_move(row, col)
+            # end if
+        # end for
+
+        return board
+    # end load_moves
 
 # end  OthelloBoard
 
@@ -399,7 +492,7 @@ def generate_game(max_moves: int = 61, seed: int = None) -> List[str]:
     # end if
     
     # Create a new Othello board with standard starting position
-    board = OthelloBoard()
+    board = OthelloGame()
 
     # Continue making valid moves
     still_valid = True
@@ -408,13 +501,11 @@ def generate_game(max_moves: int = 61, seed: int = None) -> List[str]:
         valid_moves = board.get_valid_moves()
 
         if not valid_moves:
-            # No valid moves for current player, record a pass move
-            board.record_pass()
+            # No valid moves for current player, switch player
+            board.switch_player()
             
             # Check if the other player also has no valid moves (game is over)
             if not board.has_valid_moves():
-                # Record a pass move for the other player as well
-                board.record_pass()
                 still_valid = False
             # end if
             
@@ -427,7 +518,7 @@ def generate_game(max_moves: int = 61, seed: int = None) -> List[str]:
     # end while
 
     # Return the list of moves made during the game
-    return board.get_moves_notation()
+    return board.get_moves()
 # end generate_game
 
 
@@ -483,9 +574,15 @@ def create_move_mapping() -> Dict[str, int]:
     id_counter = 1
     for col in range(8):  # a-h
         for row in range(8):  # 1-8
+            # Move not possible on the centered square
+            if (3 <= col <= 4) and (3 <= row <= 4):
+                continue
+            # end if
             notation = chr(97 + col) + str(row + 1)
             move_to_id[notation] = id_counter
             id_counter += 1
+        # end for
+    # end for
     
     return move_to_id
 # end create_move_mapping
@@ -576,7 +673,9 @@ def load_games(input_file: str) -> List[List[int]]:
     """
     with open(input_file, 'rb') as f:
         game_sequences = pickle.load(f)
+    # end with
     return game_sequences
+# end def load_games
 
 def extract_game_by_index(games: List[List[int]], index: int) -> List[int]:
     """
@@ -604,7 +703,8 @@ def extract_games_by_length(games: List[List[int]], length: int) -> List[Tuple[i
     Returns:
         List[Tuple[int, List[int]]]: List of tuples (index, game) with the specified length
     """
-    return [(i, game) for i, game in enumerate(games) if len(game) == length]
+    return [(i, game) for i, game in enumerate(games) if len(game) - 1 == length]
+# end def extract_games_by_length
 
 
 def view_game(game_file: str, game_index: int) -> None:
@@ -615,33 +715,34 @@ def view_game(game_file: str, game_index: int) -> None:
         game_file (str): Path to the binary file containing games
         game_index (int): Index of the game to view
     """
+    # Create a Rich console
+    console = Console()
+    
     # Load games from the input file
-    print(f"Loading games from {game_file}...")
+    console.print(f"Loading games from {game_file}...", style="blue")
     games = load_games(game_file)
-    print(f"Loaded {len(games)} games.")
+    console.print(f"Loaded {len(games)} games.")
     
     # Extract the game at the specified index
     try:
         game_moves = extract_game_by_index(games, game_index)
-        print(f"Viewing game at index {game_index} with {len(game_moves) - 1} moves.")
+        console.print(f"Viewing game at index {game_index} with {len(game_moves) - 1} moves.", style="green")
     except ValueError as e:
-        print(f"Error: {e}")
+        console.print(f"Error: {e}", style="bold red")
         return
-    
+    # end try
+
     # Convert move IDs to notations (skipping BOS token)
     move_notations = convert_ids_to_notation(game_moves)
 
     # Log the game moves
-    print(f"Game {game_index} has moves {move_notations}.")
+    console.print(f"Game {game_index} has moves {move_notations}.", style="cyan")
     
     # Create a board to replay the game
-    board = OthelloBoard()
+    board = OthelloGame.load_moves(move_notations)
     
     # Current move index (start at -1 to show initial board)
     current_move = -1
-
-    # List to store the player for each move
-    move_players = []
     
     # Create the figure and axes for the board
     fig, ax = plt.subplots(figsize=(8, 8))
@@ -668,17 +769,13 @@ def view_game(game_file: str, game_index: int) -> None:
         for i in range(9):
             ax.plot([i, i], [0, 8], 'k-', lw=1)
             ax.plot([0, 8], [i, i], 'k-', lw=1)
-        
-        # Draw the pieces
-        for row in range(8):
-            for col in range(8):
-                if board.board[row][col] == board.BLACK:
-                    ax.add_patch(plt.Circle((col + 0.5, row + 0.5), 0.4, color='black'))
-                elif board.board[row][col] == board.WHITE:
-                    ax.add_patch(plt.Circle((col + 0.5, row + 0.5), 0.4, color='white'))
-                # end if
-            # end for
         # end for
+
+        # Draw the four initial pieces
+        ax.add_patch(plt.Circle((3.5, 3.5), 0.4, color='white'))
+        ax.add_patch(plt.Circle((4.5, 4.5), 0.4, color='white'))
+        ax.add_patch(plt.Circle((3.5, 4.5), 0.4, color='black'))
+        ax.add_patch(plt.Circle((4.5, 3.5), 0.4, color='black'))
         
         # Add column and row labels
         ax.set_xticks([i + 0.5 for i in range(8)])
@@ -690,35 +787,33 @@ def view_game(game_file: str, game_index: int) -> None:
         if current_move == -1:
             ax.set_title("Initial Board")
         else:
-            move_text = move_notations[current_move]
+            # Draw each move until current_move
+            for m_i in range(current_move+1):
+                # Get board modifications
+                m: List[Tuple[int, int, int]] = board.board.history[m_i]
 
-            # Check if this is a pass move
-            player_pass = False
-            if len(board.moves) >= 2 and board.moves[-2] == "pass":
-                player_pass = True
-            # end if
+                # For each modification
+                for row, col, p in m:
+                    # Draw the piece
+                    if p == board.BLACK:
+                        ax.add_patch(plt.Circle((col + 0.5, row + 0.5), 0.4, color='black'))
+                    else:
+                        ax.add_patch(plt.Circle((col + 0.5, row + 0.5), 0.4, color='white'))
+                    # end if
+                # end for
+            # end for
 
-            def switch_player(p):
-                if p == "Black":
-                    return "White"
-                else:
-                    return "Black"
-                # end if
-            # end switch_player
+            # Get current move
+            move_text = board.moves[current_move]
 
             # Use the stored player information
-            player = "Black" if move_players[current_move] == board.BLACK else "White"
-            player = switch_player(player) if player_pass else player
+            player = "Black" if board.moves_player[current_move] == board.BLACK else "White"
 
             # Check if there was a pass before this move
-            if current_move > 0 and current_move - 1 < len(move_players):
+            if current_move > 0 and player == board.moves_player[current_move-1]:
                 # If the same player made two consecutive moves, it means the other player passed
-                if player_pass:
-                    opposite_player = "White" if player == "Black" else "Black"
-                    ax.set_title(f"Move {current_move + 1}: {opposite_player} passed, {player} plays {move_text}")
-                else:
-                    ax.set_title(f"Move {current_move + 1}: {player} plays {move_text}")
-                # end if
+                opposite_player = "White" if player == "Black" else "Black"
+                ax.set_title(f"Move {current_move + 1}: {opposite_player} passed, {player} plays {move_text}")
             else:
                 ax.set_title(f"Move {current_move + 1}: {player} plays {move_text}")
             # end if
@@ -731,84 +826,33 @@ def view_game(game_file: str, game_index: int) -> None:
         
         # Update the figure
         fig.canvas.draw_idle()
+    # end def draw_board
     
     def on_prev_click(event):
         """
         Handle click on Previous button.
         """
-        nonlocal current_move, board, move_players
+        nonlocal current_move, board
         
         if current_move > -1:
             # Reset the board and replay up to the previous move
-            board = OthelloBoard()
             current_move -= 1
-            
-            # Clear the move_players list
-            move_players = []
-            
-            # Replay all moves up to the current one
-            for i in range(current_move + 1):
-                notation = move_notations[i]
-                row, col = board.notation_to_coords(notation)
-                
-                # Check if the move is valid for the current player
-                if not board.is_valid_move(row, col):
-                    # If the move is not valid, the current player must pass
-                    # Store the current player (who is passing) in move_players
-                    move_players.append(board.current_player)
-                    
-                    # Record the pass and switch to the other player
-                    board.record_pass()
-                    
-                    # Now check if the move is valid for the new current player
-                    if not board.is_valid_move(row, col):
-                        print(f"Error: Move {notation} is not valid for either player.")
-                        continue
-                
-                # Store the current player before making the move
-                move_players.append(board.current_player)
-                
-                board.make_move(row, col)
-            # end for
+
+            # Update disply
             draw_board()
+        # end if
+    # end on_prev_click
     
     def on_next_click(event):
         """
         Handle click on Next button.
         """
-        nonlocal current_move, board, move_players
-        
-        if current_move < len(move_notations) - 1:
-            current_move += 1
-            notation = move_notations[current_move]
-            row, col = board.notation_to_coords(notation)
-            
-            # Check if the move is valid for the current player
-            if not board.is_valid_move(row, col):
-                # If the move is not valid, the current player must pass
-                # Store the current player (who is passing) in move_players
-                if current_move >= len(move_players):
-                    move_players.append(board.current_player)
-                # end if
-                
-                # Record the pass and switch to the other player
-                board.record_pass()
-                
-                # Now check if the move is valid for the new current player
-                if not board.is_valid_move(row, col):
-                    print(f"Error: Move {notation} is not valid for either player.")
-                    current_move -= 1  # Revert the move index
-                    return
-                # end if
-            # end if
-            
-            # Store the current player before making the move
-            if current_move >= len(move_players):
-                move_players.append(board.current_player)
-            # end if
+        nonlocal current_move, board
 
-            board.make_move(row, col)
-            
+        # Check that we are not at the end
+        if current_move < len(board) - 1:
+            # Update display
+            current_move += 1
             draw_board()
         # end if
     # end def on_next_click
@@ -823,6 +867,7 @@ def view_game(game_file: str, game_index: int) -> None:
     # Show the plot
     plt.tight_layout()
     plt.show()
+# end def view_game
 
 def main():
     """
@@ -914,44 +959,46 @@ def main():
     if len(sys.argv) > 1 and sys.argv[1] not in ['generate', 'extract', 'view']:
         # Add the generate command
         sys.argv.insert(1, 'generate')
+    # end if
     
     # Parse command-line arguments
     args = parser.parse_args()
     
-    # If no command is specified, default to generate
-    if args.command is None:
-        args.command = 'generate'
-    
     # Execute the appropriate command
     if args.command == 'generate':
-        # Generate the specified number of games
-        print(f"Generating {args.num_games} Othello games...")
-        if args.seed is not None:
-            print(f"Using random seed: {args.seed}")
-        # end if
+        # Create a Rich console
+        console = Console()
         
+        # Generate the specified number of games
+        console.print(f"Generating {args.num_games} Othello games...", style="bold green")
+
+        if args.seed is not None:
+            console.print(f"Using random seed: {args.seed}", style="blue")
+        # end if
+
+        # Generate the games
         games = generate_games(args.num_games, args.seed)
 
         # Calculate and display statistics of game lengths
-        game_lengths = [len(game) - 1 for game in games]
+        game_lengths = [len(game) for game in games]
         length_counter = Counter(game_lengths)
         
-        print("\nGame Length Statistics:")
-        print(f"Total games: {len(games)}")
-        print(f"Average length: {sum(game_lengths) / len(games):.2f} moves")
-        print(f"Minimum length: {min(game_lengths)} moves")
-        print(f"Maximum length: {max(game_lengths)} moves")
+        console.print("\nGame Length Statistics:", style="bold")
+        console.print(f"Total games: {len(games)}")
+        console.print(f"Average length: {sum(game_lengths) / len(games):.2f} moves")
+        console.print(f"Minimum length: {min(game_lengths)} moves")
+        console.print(f"Maximum length: {max(game_lengths)} moves")
         
-        print("\nLength distribution:")
+        console.print("\nLength distribution:", style="bold")
         for length in sorted(length_counter.keys()):
             count = length_counter[length]
             percentage = (count / len(games)) * 100
-            print(f"{length} moves: {count} games ({percentage:.1f}%)")
+            console.print(f"{length} moves: {count} games ({percentage:.1f}%)")
         # end for
 
         # Save the generated games to the output file
         save_games(games, args.output)
-        print(f"\nGames saved to {args.output}")
+        console.print(f"\nGames saved to {args.output}", style="bold green")
     elif args.command == 'extract':
         # Create a Rich console
         console = Console()
