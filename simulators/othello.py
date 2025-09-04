@@ -86,6 +86,7 @@ class OthelloBoard:
 
         # Keep track of moves made in standard notation (e.g., 'd3', 'e6')
         self.moves = []
+        self.moves_player = []
     # end __init__
 
     def get_valid_moves(self) -> List[Tuple[int, int]]:
@@ -202,6 +203,7 @@ class OthelloBoard:
 
         # Place the current player's piece at the specified position
         self.board[row][col] = self.current_player
+        self.moves_player.append(self.current_player)
 
         # Determine the opponent's piece color for flipping
         opponent = self.WHITE if self.current_player == self.BLACK else self.BLACK
@@ -366,13 +368,16 @@ class OthelloBoard:
         """
         # Record the pass move as "pass" in the move history
         self.moves.append("pass")
-        
+        self.moves_player.append(self.current_player)
+
         # Switch to the other player for the next turn
         self.switch_player()
     # end record_pass
 
+# end  OthelloBoard
 
-def generate_game(max_moves: int = 60, seed: int = None) -> List[str]:
+
+def generate_game(max_moves: int = 61, seed: int = None) -> List[str]:
     """
     Generate a single valid Othello game and return the list of moves.
     
@@ -391,12 +396,14 @@ def generate_game(max_moves: int = 60, seed: int = None) -> List[str]:
     if seed is not None:
         random.seed(seed)
         np.random.seed(seed)
+    # end if
     
     # Create a new Othello board with standard starting position
     board = OthelloBoard()
 
-    # Continue making moves until the game is over or max_moves is reached
-    while len(board.moves) < max_moves:
+    # Continue making valid moves
+    still_valid = True
+    while still_valid:
         # Get all valid moves for the current player
         valid_moves = board.get_valid_moves()
 
@@ -408,7 +415,8 @@ def generate_game(max_moves: int = 60, seed: int = None) -> List[str]:
             if not board.has_valid_moves():
                 # Record a pass move for the other player as well
                 board.record_pass()
-                break
+                still_valid = False
+            # end if
             
             continue
         # end if
@@ -423,13 +431,12 @@ def generate_game(max_moves: int = 60, seed: int = None) -> List[str]:
 # end generate_game
 
 
-def generate_games(num_games: int, max_moves: int = 60, seed: int = None) -> List[List[str]]:
+def generate_games(num_games: int, seed: int = None) -> List[List[str]]:
     """
     Generate multiple Othello games.
     
     Args:
         num_games (int): Number of games to generate
-        max_moves (int): Maximum number of moves per game (default: 60)
         seed (int, optional): Random seed for reproducibility. If None, no seed is set.
         
     Returns:
@@ -448,7 +455,7 @@ def generate_games(num_games: int, max_moves: int = 60, seed: int = None) -> Lis
         # Generate a single game and add it to the list
         # If seed is provided, use a different seed for each game to ensure variety
         game_seed = None if seed is None else seed + i
-        game = generate_game(max_moves, game_seed)
+        game = generate_game(game_seed)
         games.append(game)
     # end for
     
@@ -623,13 +630,16 @@ def view_game(game_file: str, game_index: int) -> None:
     
     # Convert move IDs to notations (skipping BOS token)
     move_notations = convert_ids_to_notation(game_moves)
+
+    # Log the game moves
+    print(f"Game {game_index} has moves {move_notations}.")
     
     # Create a board to replay the game
     board = OthelloBoard()
     
     # Current move index (start at -1 to show initial board)
     current_move = -1
-    
+
     # List to store the player for each move
     move_players = []
     
@@ -646,7 +656,9 @@ def view_game(game_file: str, game_index: int) -> None:
     next_button = Button(next_button_ax, 'Next')
     
     def draw_board():
-        """Draw the current state of the board."""
+        """
+        Draw the current state of the board.
+        """
         ax.clear()
         
         # Draw the green background
@@ -663,116 +675,55 @@ def view_game(game_file: str, game_index: int) -> None:
                 if board.board[row][col] == board.BLACK:
                     ax.add_patch(plt.Circle((col + 0.5, row + 0.5), 0.4, color='black'))
                 elif board.board[row][col] == board.WHITE:
-                    ax.add_patch(plt.Circle((col + 0.5, row + 0.5), 0.4, color='white', edgecolor='black'))
+                    ax.add_patch(plt.Circle((col + 0.5, row + 0.5), 0.4, color='white'))
+                # end if
+            # end for
+        # end for
         
         # Add column and row labels
         ax.set_xticks([i + 0.5 for i in range(8)])
         ax.set_yticks([i + 0.5 for i in range(8)])
         ax.set_xticklabels(['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'])
         ax.set_yticklabels(['1', '2', '3', '4', '5', '6', '7', '8'])
-        
+
         # Set title with current move information
         if current_move == -1:
             ax.set_title("Initial Board")
         else:
             move_text = move_notations[current_move]
-            
+
             # Check if this is a pass move
-            if move_text == "pass":
-                player = "Black" if board.current_player == board.WHITE else "White"
-                ax.set_title(f"Move {current_move + 1}: {player} passes")
-            else:
-                if current_move < len(move_players):
-                    # Use the stored player information
-                    player = "Black" if move_players[current_move] == board.BLACK else "White"
-                    
-                    # Check if there was a pass before this move
-                    if current_move > 0 and current_move - 1 < len(move_players):
-                        prev_player = "Black" if move_players[current_move - 1] == board.BLACK else "White"
-                        # If the same player made two consecutive moves, it means the other player passed
-                        if player == prev_player:
-                            opposite_player = "White" if player == "Black" else "Black"
-                            ax.set_title(f"Move {current_move + 1}: {opposite_player} passed, {player} plays {move_text}")
-                        else:
-                            ax.set_title(f"Move {current_move + 1}: {player} plays {move_text}")
-                    else:
-                        ax.set_title(f"Move {current_move + 1}: {player} plays {move_text}")
+            player_pass = False
+            if len(board.moves) >= 2 and board.moves[-2] == "pass":
+                player_pass = True
+            # end if
+
+            def switch_player(p):
+                if p == "Black":
+                    return "White"
                 else:
-                    # If we need to use the fallback method, we should ensure the move_players list is populated
-                    # by replaying the game up to this point
-                    temp_board = OthelloBoard()
-                    temp_move_players = []
-                    
-                    # Replay all moves up to the current one
-                    for i in range(current_move + 1):
-                        notation = move_notations[i]
-                        
-                        # Skip pass moves in replay
-                        if notation == "pass":
-                            temp_board.record_pass()
-                            continue
-                            
-                        row, col = temp_board.notation_to_coords(notation)
-                        
-                        # Check if the move is valid for the current player
-                        if not temp_board.is_valid_move(row, col):
-                            # If the move is not valid, the current player must pass
-                            temp_board.record_pass()
-                        
-                        # Store the current player before making the move
-                        temp_move_players.append(temp_board.current_player)
-                        
-                        # Make the move
-                        temp_board.make_move(row, col)
-                    
-                    # Now we can determine the correct player for this move
-                    if current_move < len(temp_move_players):
-                        player = "Black" if temp_move_players[current_move] == board.BLACK else "White"
-                        ax.set_title(f"Move {current_move + 1}: {player} plays {move_text}")
-                    else:
-                        # If we still can't determine the player, we need to be more careful
-                        # Replay the game from the beginning to determine the correct player
-                        replay_board = OthelloBoard()
-                        
-                        # Track the player for each move in the sequence
-                        # We need to check if there are any passes in the sequence
-                        # that might affect the current player
-                        i = 0
-                        while i < len(move_notations):
-                            # If we've reached the current move, break
-                            if i == current_move:
-                                break
-                                
-                            prev_notation = move_notations[i]
-                            
-                            # Handle pass moves
-                            if prev_notation == "pass":
-                                replay_board.record_pass()
-                                i += 1
-                                continue
-                            
-                            # Handle regular moves
-                            prev_row, prev_col = replay_board.notation_to_coords(prev_notation)
-                            
-                            # Check if the move is valid for the current player
-                            if not replay_board.is_valid_move(prev_row, prev_col):
-                                # If the move is not valid, the current player must pass
-                                replay_board.record_pass()
-                                
-                                # Check again if the move is valid for the new current player
-                                if not replay_board.is_valid_move(prev_row, prev_col):
-                                    print(f"Error: Move {prev_notation} is not valid for either player.")
-                                    i += 1
-                                    continue
-                            
-                            # Make the move
-                            replay_board.make_move(prev_row, prev_col)
-                            i += 1
-                        
-                        # The current player before making the move is the one who plays
-                        player = "Black" if replay_board.current_player == replay_board.BLACK else "White"
-                        ax.set_title(f"Move {current_move + 1}: {player} plays {move_text}")
-        
+                    return "Black"
+                # end if
+            # end switch_player
+
+            # Use the stored player information
+            player = "Black" if move_players[current_move] == board.BLACK else "White"
+            player = switch_player(player) if player_pass else player
+
+            # Check if there was a pass before this move
+            if current_move > 0 and current_move - 1 < len(move_players):
+                # If the same player made two consecutive moves, it means the other player passed
+                if player_pass:
+                    opposite_player = "White" if player == "Black" else "Black"
+                    ax.set_title(f"Move {current_move + 1}: {opposite_player} passed, {player} plays {move_text}")
+                else:
+                    ax.set_title(f"Move {current_move + 1}: {player} plays {move_text}")
+                # end if
+            else:
+                ax.set_title(f"Move {current_move + 1}: {player} plays {move_text}")
+            # end if
+        # end if
+
         # Set limits and aspect
         ax.set_xlim(0, 8)
         ax.set_ylim(0, 8)
@@ -838,6 +789,7 @@ def view_game(game_file: str, game_index: int) -> None:
                 # Store the current player (who is passing) in move_players
                 if current_move >= len(move_players):
                     move_players.append(board.current_player)
+                # end if
                 
                 # Record the pass and switch to the other player
                 board.record_pass()
@@ -847,14 +799,19 @@ def view_game(game_file: str, game_index: int) -> None:
                     print(f"Error: Move {notation} is not valid for either player.")
                     current_move -= 1  # Revert the move index
                     return
+                # end if
+            # end if
             
             # Store the current player before making the move
             if current_move >= len(move_players):
                 move_players.append(board.current_player)
-            
+            # end if
+
             board.make_move(row, col)
             
             draw_board()
+        # end if
+    # end def on_next_click
     
     # Connect button events
     prev_button.on_clicked(on_prev_click)
@@ -897,13 +854,6 @@ def main():
         type=int,
         default=10,
         help='Number of games to generate (default: 10)'
-    )
-    
-    generate_parser.add_argument(
-        '--max-moves',
-        type=int,
-        default=60,
-        help='Maximum number of moves per game (default: 60)'
     )
 
     generate_parser.add_argument(
@@ -975,14 +925,15 @@ def main():
     # Execute the appropriate command
     if args.command == 'generate':
         # Generate the specified number of games
-        print(f"Generating {args.num_games} Othello games (max {args.max_moves} moves per game)...")
+        print(f"Generating {args.num_games} Othello games...")
         if args.seed is not None:
             print(f"Using random seed: {args.seed}")
+        # end if
         
-        games = generate_games(args.num_games, args.max_moves, args.seed)
+        games = generate_games(args.num_games, args.seed)
 
         # Calculate and display statistics of game lengths
-        game_lengths = [len(game) for game in games]
+        game_lengths = [len(game) - 1 for game in games]
         length_counter = Counter(game_lengths)
         
         print("\nGame Length Statistics:")
@@ -996,11 +947,11 @@ def main():
             count = length_counter[length]
             percentage = (count / len(games)) * 100
             print(f"{length} moves: {count} games ({percentage:.1f}%)")
+        # end for
 
         # Save the generated games to the output file
         save_games(games, args.output)
         print(f"\nGames saved to {args.output}")
-    
     elif args.command == 'extract':
         # Create a Rich console
         console = Console()
@@ -1021,10 +972,12 @@ def main():
             except ValueError as e:
                 console.print(f"Error: {e}", style="bold red")
                 return
+            # end try
         else:
             # Extract games by length
             extracted_games_with_indices = extract_games_by_length(games, args.length)
             console.print(f"Extracted {len(extracted_games_with_indices)} games with length {args.length}.")
+        # end if
         
         # Determine the number of digits needed for zero padding
         max_index = max([idx for idx, _ in extracted_games_with_indices]) if extracted_games_with_indices else 0
@@ -1045,9 +998,9 @@ def main():
             
             # Display the game
             console.print(text)
+        # end for
         
         # No longer saving extracted games to a file - only displaying in terminal
-    
     elif args.command == 'view':
         # Launch the interactive game viewer
         view_game(args.input, args.index)
