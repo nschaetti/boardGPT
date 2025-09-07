@@ -26,8 +26,13 @@ from collections import Counter
 from typing import List, Tuple, Set, Dict
 from rich.console import Console
 from rich.text import Text
+from rich.progress import Progress, TextColumn, BarColumn, TimeElapsedColumn, TimeRemainingColumn
 import matplotlib.pyplot as plt
 from matplotlib.widgets import Button
+
+
+# Create a Rich console
+console = Console()
 
 
 class OthelloBoard:
@@ -425,6 +430,158 @@ class OthelloGame:
         self.moves = moves
         self.moves_player = moves_player
     # end set_moves
+    
+    def validate_game(self) -> Tuple[bool, str]:
+        """
+        Validate the current game according to Othello rules.
+        
+        Checks:
+        - The number of moves must equal the number of players, and game length must be between 1 and 60
+        - Every move must correspond to a valid square on the Othello board (from a1 to h8)
+        - No square can be played more than once during the game
+        - Each player entry must be either 1 (black) or 2 (white)
+        - At each step, the move played must be a legal move for the current player
+        - After each move, the chosen square must belong to the current player
+        - After t moves, the total number of discs on the board must equal 4 + t
+        - Turns should normally alternate between black and white players
+        - If the same player moves twice in a row, this must correspond to a valid pass
+        - If the game ends at 60 moves, the final board must be completely full
+        - If the game ends before 60 moves, it must be because both players had no legal moves
+        - At all times, every square on the board must be either empty, black, or white
+        
+        Returns:
+            Tuple[bool, str]: (is_valid, error_message) - True if valid, False with error message if invalid
+        """
+        # Check if the game has moves
+        if not self.moves:
+            return False, "Game has no moves"
+            
+        # Check game length is between 1 and 60
+        if len(self.moves) < 1 or len(self.moves) > 60:
+            return False, f"Game length {len(self.moves)} is not between 1 and 60"
+            
+        # Check the number of moves equals the number of players
+        if len(self.moves) != len(self.moves_player):
+            return False, "Number of moves does not equal number of player entries"
+            
+        # Check each player entry is either 1 (black) or 2 (white)
+        for i, player in enumerate(self.moves_player):
+            if player != self.BLACK and player != self.WHITE:
+                return False, f"Invalid player value {player} at move {i+1}"
+                
+        # Create a new board to replay and validate the game
+        board = OthelloGame()
+        played_squares = set()
+        
+        # Track the current player
+        current_player = self.BLACK  # Black starts in Othello
+        
+        for i, move in enumerate(self.moves):
+            # Check move corresponds to a valid square (a1 to h8)
+            if not (len(move) == 2 and 'a' <= move[0] <= 'h' and '1' <= move[1] <= '8'):
+                return False, f"Move {i+1} '{move}' is not a valid square (a1-h8)"
+                
+            # Convert notation to coordinates
+            row, col = board.notation_to_coords(move)
+            
+            # Check no square is played more than once
+            square = (row, col)
+            if square in played_squares:
+                return False, f"Square {move} at move {i+1} was already played"
+            played_squares.add(square)
+            
+            # Check the player matches the expected player
+            player = self.moves_player[i]
+            if player != current_player:
+                # If player doesn't match, check if it's a valid pass situation
+                valid_moves = []
+                for r in range(self.SIZE):
+                    for c in range(self.SIZE):
+                        if board.is_valid_move(r, c):
+                            valid_moves.append((r, c))
+                
+                # If current player had valid moves, this is an invalid pass
+                if valid_moves:
+                    return False, f"Player {current_player} had valid moves but player {player} moved at move {i+1}"
+                
+                # Switch to the other player
+                current_player = self.WHITE if current_player == self.BLACK else self.BLACK
+                
+                # Check if the new player matches
+                if player != current_player:
+                    return False, f"Invalid player sequence at move {i+1}"
+            
+            # Check if the move is legal for the current player
+            board.current_player = player
+            if not board.is_valid_move(row, col):
+                return False, f"Move {i+1} '{move}' is not a legal move for player {player}"
+                
+            # Make the move
+            board.make_move(row, col)
+            
+            # Check that after the move, the chosen square belongs to the current player
+            if board.board.get_piece(row, col) != player:
+                return False, f"After move {i+1}, square {move} does not belong to player {player}"
+                
+            # Count total pieces on the board
+            total_pieces = 0
+            for r in range(self.SIZE):
+                for c in range(self.SIZE):
+                    piece = board.board.get_piece(r, c)
+                    if piece != self.EMPTY:
+                        total_pieces += 1
+                    # Check every square is either empty, black, or white
+                    if piece not in [self.EMPTY, self.BLACK, self.WHITE]:
+                        return False, f"Invalid piece value {piece} at position ({r},{c})"
+            
+            # Check total pieces equals 4 + number of moves
+            if total_pieces != 4 + (i + 1):
+                return False, f"After move {i+1}, total pieces {total_pieces} does not equal {4 + (i + 1)}"
+                
+            # Update current player for next move
+            current_player = self.WHITE if player == self.BLACK else self.BLACK
+        
+        # Check end game conditions
+        if len(self.moves) == 60:
+            # If game ends at 60 moves, the board must be completely full
+            empty_squares = 0
+            for r in range(self.SIZE):
+                for c in range(self.SIZE):
+                    if board.board.get_piece(r, c) == self.EMPTY:
+                        empty_squares += 1
+            
+            if empty_squares > 0:
+                return False, f"Game ended at 60 moves but board has {empty_squares} empty squares"
+        else:
+            # If game ends before 60 moves, it must be because both players had no legal moves
+            black_has_moves = False
+            white_has_moves = False
+            
+            # Check if black has moves
+            board.current_player = self.BLACK
+            for r in range(self.SIZE):
+                for c in range(self.SIZE):
+                    if board.is_valid_move(r, c):
+                        black_has_moves = True
+                        break
+                if black_has_moves:
+                    break
+            
+            # Check if white has moves
+            board.current_player = self.WHITE
+            for r in range(self.SIZE):
+                for c in range(self.SIZE):
+                    if board.is_valid_move(r, c):
+                        white_has_moves = True
+                        break
+                if white_has_moves:
+                    break
+            
+            if black_has_moves or white_has_moves:
+                return False, f"Game ended at {len(self.moves)} moves but at least one player still has valid moves"
+        
+        # All validation checks passed
+        return True, "Game is valid"
 
     # endregion PUBLIC
 
@@ -470,69 +627,99 @@ class OthelloGame:
 # end  OthelloBoard
 
 
-def generate_game(max_moves: int = 61, seed: int = None) -> List[str]:
+def generate_game(seed: int = None, max_attempts: int = 100) -> List[str]:
     """
     Generate a single valid Othello game and return the list of moves.
     
     This function simulates an Othello game by making random valid moves
     until either the game is over (no player has valid moves) or the maximum
-    number of moves is reached.
+    number of moves is reached. It validates the generated game against all
+    Othello rules and retries if the game is invalid.
     
     Args:
-        max_moves (int): Maximum number of moves to make (default: 60)
         seed (int, optional): Random seed for reproducibility. If None, no seed is set.
+        max_attempts (int): Maximum number of attempts to generate a valid game (default: 100)
     
     Returns:
         List[str]: List of moves in standard notation (e.g., ['d3', 'c4', 'e3'])
     """
+    global console
+
     # Set random seed if provided
     if seed is not None:
         random.seed(seed)
         np.random.seed(seed)
     # end if
     
-    # Create a new Othello board with standard starting position
-    board = OthelloGame()
+    attempt = 0
+    while attempt < max_attempts:
+        # Create a new Othello board with standard starting position
+        board = OthelloGame()
 
-    # Continue making valid moves
-    still_valid = True
-    while still_valid:
-        # Get all valid moves for the current player
-        valid_moves = board.get_valid_moves()
+        # Continue making valid moves
+        still_valid = True
+        while still_valid:
+            # Get all valid moves for the current player
+            valid_moves = board.get_valid_moves()
 
-        if not valid_moves:
-            # No valid moves for current player, switch player
-            board.switch_player()
-            
-            # Check if the other player also has no valid moves (game is over)
-            if not board.has_valid_moves():
-                still_valid = False
+            if not valid_moves:
+                # No valid moves for current player, switch player
+                board.switch_player()
+                
+                # Check if the other player also has no valid moves (game is over)
+                if not board.has_valid_moves():
+                    still_valid = False
+                # end if
+                
+                continue
             # end if
-            
-            continue
+
+            # Choose a random valid move from the available options
+            row, col = random.choice(valid_moves)
+            board.make_move(row, col)
+        # end while
+
+        # Validate the generated game
+        is_valid, error_message = board.validate_game()
+        
+        if is_valid:
+            # Return the list of moves made during the game
+            return board.get_moves()
+        else:
+            console.print("[orange bold]Invalid Othello game! Retrying...[/]")
+            # Try again with a different seed
+            attempt += 1
+            if seed is not None:
+                # Use a different seed for each attempt
+                random.seed(seed + attempt)
+                np.random.seed(seed + attempt)
+            # end if
         # end if
-
-        # Choose a random valid move from the available options
-        row, col = random.choice(valid_moves)
-        board.make_move(row, col)
     # end while
-
-    # Return the list of moves made during the game
-    return board.get_moves()
+    
+    # If we've reached the maximum number of attempts, raise an exception
+    raise RuntimeError(f"Failed to generate a valid Othello game after {max_attempts} attempts")
 # end generate_game
 
 
-def generate_games(num_games: int, seed: int = None) -> List[List[str]]:
+def generate_games(num_games: int, seed: int = None, output_file: str = None, chunk_size: int = None) -> List[List[str]]:
     """
     Generate multiple Othello games.
+    
+    If output_file is provided, games will be saved in chunks as they are generated to save memory.
+    Otherwise, all games will be kept in memory and returned.
     
     Args:
         num_games (int): Number of games to generate
         seed (int, optional): Random seed for reproducibility. If None, no seed is set.
+        output_file (str, optional): Path to save the generated games. If None, games are only returned.
+        chunk_size (int, optional): Number of games per file. If None or 0, all games are saved to a single file.
         
     Returns:
-        List[List[str]]: List of games, where each game is a list of moves in standard notation
+        List[List[str]]: List of games if output_file is None, otherwise an empty list
     """
+    import os
+    
     # Set random seed if provided
     if seed is not None:
         random.seed(seed)
@@ -541,15 +728,69 @@ def generate_games(num_games: int, seed: int = None) -> List[List[str]]:
     # Initialize empty list to store the generated games
     games = []
     
-    # Generate the specified number of games
-    for i in range(num_games):
-        # Generate a single game and add it to the list
-        # If seed is provided, use a different seed for each game to ensure variety
-        game_seed = None if seed is None else seed + i
-        game = generate_game(game_seed)
-        games.append(game)
-    # end for
+    # If output_file is provided and chunk_size is specified, prepare for chunking
+    save_in_chunks = output_file is not None and chunk_size is not None and chunk_size > 0
+    chunk_counter = 0
     
+    # Create a progress bar
+    with Progress(
+        TextColumn("[bold blue]{task.description}"),
+        BarColumn(),
+        TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+        TextColumn("[bold green]{task.completed}/{task.total} games"),
+        TimeElapsedColumn(),
+        TimeRemainingColumn(),
+    ) as progress:
+        # Create a task for game generation
+        task = progress.add_task("[bold green]Generating games...", total=num_games)
+        
+        # Generate the specified number of games
+        for i in range(num_games):
+            # Generate a single game and add it to the list
+            # If seed is provided, use a different seed for each game to ensure variety
+            game_seed = None if seed is None else seed + i
+            game = generate_game(game_seed)
+            games.append(game)
+            
+            # Update the progress bar
+            progress.update(task, advance=1)
+            
+            # If we're saving in chunks and have reached the chunk size, save and clear the games list
+            if save_in_chunks and len(games) >= chunk_size:
+                # Get the base filename and extension
+                base_name, ext = os.path.splitext(output_file)
+                
+                # Create the chunk filename
+                chunk_counter += 1
+                chunk_filename = f"{base_name}_{chunk_counter}{ext}"
+                
+                # Save the chunk
+                save_games(games, chunk_filename)
+                
+                # Clear the games list to free memory
+                games = []
+            # end if
+        # end for
+    
+    # If there are remaining games and we're saving to a file
+    if output_file is not None and games:
+        if save_in_chunks:
+            # Save the final chunk
+            chunk_counter += 1
+            base_name, ext = os.path.splitext(output_file)
+            chunk_filename = f"{base_name}_{chunk_counter}{ext}"
+            save_games(games, chunk_filename)
+            
+            # Return an empty list since games were saved to files
+            return []
+        else:
+            # Save all games to a single file
+            save_games(games, output_file)
+            
+            # Return an empty list since games were saved to a file
+            return []
+    
+    # Return the games if they weren't saved to a file
     return games
 # end generate_games
 
@@ -627,43 +868,82 @@ def convert_ids_to_notation(game: List[int]) -> List[str]:
 # end convert_ids_to_notation
 
 
-def save_games(games: List[List[str]], output_file: str) -> None:
+def save_games(games: List[List[str]], output_file: str, chunk_size: int = None) -> None:
     """
-    Save games to a binary file.
+    Save games to one or more binary files.
     
     Each game is saved as a sequence of move IDs, starting with a BOS token (ID 0).
+    Token indexes are saved as 8-bit integers to save memory.
     
     Args:
         games (List[List[str]]): List of games to save
         output_file (str): Path to the output file
+        chunk_size (int, optional): Number of games per file. If None, all games are saved to a single file.
     """
+    import array
+    import os
+    
     # Create the move mapping
     move_to_id = create_move_mapping()
     
-    # Convert games to sequences of IDs
+    # Convert games to sequences of IDs using byte arrays to save memory
     game_sequences = []
     for game in games:
+        # Create a byte array for this game
+        sequence = array.array('B')  # 'B' is unsigned char (8-bit)
+        
         # Start with BOS token
-        sequence = [move_to_id["BOS"]]
+        sequence.append(move_to_id["BOS"])
+        
         # Add move IDs
         for move in game:
             if move != "pass":
                 sequence.append(move_to_id[move])
             # end if
         # end for
+        
         game_sequences.append(sequence)
     # end for
     
-    # Save to binary file using pickle
-    with open(output_file, 'wb') as f:
-        pickle.dump(game_sequences, f)
-    # end with
+    # If chunk_size is None or 0, save all games to a single file
+    if chunk_size is None or chunk_size <= 0:
+        # Save to binary file using pickle
+        with open(output_file, 'wb') as f:
+            pickle.dump(game_sequences, f)
+        # end with
+    else:
+        # Split games into chunks and save each chunk to a separate file
+        num_chunks = (len(game_sequences) + chunk_size - 1) // chunk_size  # Ceiling division
+        
+        # Get the base filename and extension
+        base_name, ext = os.path.splitext(output_file)
+        
+        # Save each chunk to a separate file
+        for i in range(num_chunks):
+            start_idx = i * chunk_size
+            end_idx = min((i + 1) * chunk_size, len(game_sequences))
+            chunk = game_sequences[start_idx:end_idx]
+            
+            # Create the chunk filename
+            chunk_filename = f"{base_name}_{i+1}{ext}"
+            
+            # Save the chunk
+            with open(chunk_filename, 'wb') as f:
+                pickle.dump(chunk, f)
+            # end with
+        # end for
+    # end if
 # end save_games
 
 
 def load_games(input_file: str) -> List[List[int]]:
     """
     Load games from a binary file.
+    
+    Handles all formats:
+    - Original format (lists of integers)
+    - Numpy uint8 arrays
+    - Python array.array('B') objects
     
     Args:
         input_file (str): Path to the input file
@@ -674,7 +954,23 @@ def load_games(input_file: str) -> List[List[int]]:
     with open(input_file, 'rb') as f:
         game_sequences = pickle.load(f)
     # end with
-    return game_sequences
+    
+    # Convert arrays back to lists for compatibility with existing code
+    result = []
+    for game in game_sequences:
+        if isinstance(game, np.ndarray):
+            # Convert numpy array to regular Python list
+            result.append(game.tolist())
+        elif hasattr(game, 'typecode') and game.typecode == 'B':
+            # Convert array.array to regular Python list
+            result.append(list(game))
+        else:
+            # Already a list, no conversion needed
+            result.append(game)
+        # end if
+    # end for
+    
+    return result
 # end def load_games
 
 def extract_game_by_index(games: List[List[int]], index: int) -> List[int]:
@@ -878,6 +1174,7 @@ def main():
         --max-moves: Maximum number of moves per game (default: 60)
         --output: Output file path (default: othello_games.bin)
         --seed: Random seed for reproducibility
+        --chunk-size: Number of games per file (default: None, all games in one file)
         
     Command-line arguments for extracting games:
         --extract: Extract games from a binary file
@@ -886,6 +1183,9 @@ def main():
         --length: Length of games to extract
         --output: Output file path for extracted games
     """
+    global console
+    import os
+
     # Set up command-line argument parser
     parser = argparse.ArgumentParser(description='Generate or extract valid Othello games.')
     
@@ -897,8 +1197,8 @@ def main():
     generate_parser.add_argument(
         '--num-games',
         type=int,
-        default=10,
-        help='Number of games to generate (default: 10)'
+        required=True,
+        help='Number of games to generate'
     )
 
     generate_parser.add_argument(
@@ -913,6 +1213,27 @@ def main():
         type=int,
         default=None,
         help='Random seed for reproducibility'
+    )
+    
+    generate_parser.add_argument(
+        '--num-val-games',
+        type=int,
+        default=None,
+        help='Number of validation games to generate'
+    )
+    
+    generate_parser.add_argument(
+        '--val-output',
+        type=str,
+        default=None,
+        help='Output file path for validation games'
+    )
+    
+    generate_parser.add_argument(
+        '--chunk-size',
+        type=int,
+        default=None,
+        help='Number of games per file. If not specified, all games are saved to a single file'
     )
     
     # Parser for extract command
@@ -966,9 +1287,6 @@ def main():
     
     # Execute the appropriate command
     if args.command == 'generate':
-        # Create a Rich console
-        console = Console()
-        
         # Generate the specified number of games
         console.print(f"Generating {args.num_games} Othello games...", style="bold green")
 
@@ -976,29 +1294,81 @@ def main():
             console.print(f"Using random seed: {args.seed}", style="blue")
         # end if
 
-        # Generate the games
-        games = generate_games(args.num_games, args.seed)
+        # Generate the games and save them directly to the output file
+        games = generate_games(args.num_games, args.seed, args.output, args.chunk_size)
 
-        # Calculate and display statistics of game lengths
-        game_lengths = [len(game) for game in games]
-        length_counter = Counter(game_lengths)
+        # If games were saved directly to files, we don't have statistics to display
+        if not games:
+            console.print("\nGames were saved directly to files to save memory.", style="bold green")
+        else:
+            # Calculate and display statistics of game lengths
+            game_lengths = [len(game) for game in games]
+            length_counter = Counter(game_lengths)
+            
+            console.print("\nGame Length Statistics:", style="bold")
+            console.print(f"Total games: {len(games)}")
+            console.print(f"Average length: {sum(game_lengths) / len(games):.2f} moves")
+            console.print(f"Minimum length: {min(game_lengths)} moves")
+            console.print(f"Maximum length: {max(game_lengths)} moves")
+            
+            console.print("\nLength distribution:", style="bold")
+            for length in sorted(length_counter.keys()):
+                count = length_counter[length]
+                percentage = (count / len(games)) * 100
+                console.print(f"{length} moves: {count} games ({percentage:.1f}%)")
+            # end for
+            
+            # Save the generated games to the output file if they weren't saved already
+            save_games(games, args.output, args.chunk_size)
         
-        console.print("\nGame Length Statistics:", style="bold")
-        console.print(f"Total games: {len(games)}")
-        console.print(f"Average length: {sum(game_lengths) / len(games):.2f} moves")
-        console.print(f"Minimum length: {min(game_lengths)} moves")
-        console.print(f"Maximum length: {max(game_lengths)} moves")
+        # Print appropriate message based on whether chunking was used
+        if args.chunk_size is not None and args.chunk_size > 0:
+            base_name, ext = os.path.splitext(args.output)
+            console.print(f"\nGames saved to {base_name}_N{ext} files with {args.chunk_size} games per file", style="bold green")
+        else:
+            console.print(f"\nGames saved to {args.output}", style="bold green")
         
-        console.print("\nLength distribution:", style="bold")
-        for length in sorted(length_counter.keys()):
-            count = length_counter[length]
-            percentage = (count / len(games)) * 100
-            console.print(f"{length} moves: {count} games ({percentage:.1f}%)")
-        # end for
-
-        # Save the generated games to the output file
-        save_games(games, args.output)
-        console.print(f"\nGames saved to {args.output}", style="bold green")
+        # Check if both validation parameters are provided
+        if args.num_val_games is not None and args.val_output is not None:
+            # Generate validation games
+            console.print(f"\nGenerating {args.num_val_games} validation games...", style="bold green")
+            
+            # Use the same seed for reproducibility if provided
+            if args.seed is not None:
+                console.print(f"Using random seed: {args.seed}", style="blue")
+            
+            # Generate the validation games and save them directly to the output file
+            val_games = generate_games(args.num_val_games, args.seed, args.val_output, args.chunk_size)
+            
+            # If validation games were saved directly to files, we don't have statistics to display
+            if not val_games:
+                console.print("\nValidation games were saved directly to files to save memory.", style="bold green")
+            else:
+                # Calculate and display statistics of validation game lengths
+                val_game_lengths = [len(game) for game in val_games]
+                val_length_counter = Counter(val_game_lengths)
+                
+                console.print("\nValidation Game Length Statistics:", style="bold")
+                console.print(f"Total validation games: {len(val_games)}")
+                console.print(f"Average length: {sum(val_game_lengths) / len(val_games):.2f} moves")
+                console.print(f"Minimum length: {min(val_game_lengths)} moves")
+                console.print(f"Maximum length: {max(val_game_lengths)} moves")
+                
+                console.print("\nValidation Length distribution:", style="bold")
+                for length in sorted(val_length_counter.keys()):
+                    count = val_length_counter[length]
+                    percentage = (count / len(val_games)) * 100
+                    console.print(f"{length} moves: {count} games ({percentage:.1f}%)")
+                
+                # Save the validation games to the specified output file if they weren't saved already
+                save_games(val_games, args.val_output, args.chunk_size)
+            
+            # Print appropriate message based on whether chunking was used
+            if args.chunk_size is not None and args.chunk_size > 0:
+                base_name, ext = os.path.splitext(args.val_output)
+                console.print(f"\nValidation games saved to {base_name}_N{ext} files with {args.chunk_size} games per file", style="bold green")
+            else:
+                console.print(f"\nValidation games saved to {args.val_output}", style="bold green")
     elif args.command == 'extract':
         # Create a Rich console
         console = Console()

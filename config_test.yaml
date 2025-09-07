@@ -1,0 +1,53 @@
+# BoardGPT Configuration File
+
+# I/O settings
+out_dir: 'out'                  # Output directory for checkpoints and logs
+eval_interval: 20             # How often to evaluate the model
+log_interval: 1                 # How often to log training progress
+eval_iters: 4                 # Number of batches to use for evaluation
+eval_only: false                # If True, script exits right after the first eval
+always_save_checkpoint: true    # If True, always save a checkpoint after each eval
+init_from: 'scratch'            # 'scratch', 'resume', or 'gpt2*'
+
+# wandb logging settings
+wandb_log: false                # Whether to use wandb logging (disabled by default)
+wandb_project: 'owt'            # Project name for wandb
+wandb_run_name: 'gpt2'          # Run name for wandb
+
+# Data settings
+board_game: "othello"
+train_data_filename: "synthetic-train.bin"
+val_data_filename: "synthetic-val.bin"              # Dataset name
+gradient_accumulation_steps: 2        # Used to simulate larger batch sizes (5 * 8)
+batch_size: 512                         # If gradient_accumulation_steps > 1, this is the micro-batch size
+block_size: 61                         # Context size for the model
+
+# Model architecture settings
+vocab_size: 61                  # Vocabulary size
+n_layer: 8                      # Number of transformer layers
+n_head: 8                       # Number of attention heads
+n_embd: 512                     # Embedding dimension
+dropout: 0.0                    # Dropout rate (0 for pretraining, try 0.1+ for finetuning)
+bias: false                     # Whether to use bias in LayerNorm and Linear layers
+
+# Optimizer settings (AdamW)
+learning_rate: 6.0e-4           # Maximum learning rate
+max_iters: 100               # Total number of training iterations
+weight_decay: 1.0e-1            # Weight decay coefficient
+beta1: 0.9                      # AdamW beta1 parameter
+beta2: 0.95                     # AdamW beta2 parameter
+grad_clip: 1.0                  # Clip gradients at this value (disable if == 0.0)
+
+# Learning rate decay settings
+decay_lr: true                  # Whether to decay the learning rate
+warmup_iters: 20              # Number of warmup steps
+lr_decay_iters: 600000          # Should be ~= max_iters per Chinchilla
+min_lr: 6.0e-5                  # Minimum learning rate (~= learning_rate/10 per Chinchilla)
+
+# DDP settings
+backend: 'nccl'                 # Backend for distributed training ('nccl', 'gloo', etc.)
+
+# System settings
+device: 'cuda'                  # Device to use ('cpu', 'cuda', 'cuda:0', 'cuda:1', 'mps' on macbooks)
+dtype: 'bfloat16'               # Data type for training (will fall back to float16 if bfloat16 not supported)
+compile: true                   # Whether to use PyTorch 2.0 compilation for speed
