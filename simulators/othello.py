@@ -29,6 +29,7 @@ from rich.text import Text
 from rich.progress import Progress, TextColumn, BarColumn, TimeElapsedColumn, TimeRemainingColumn
 import matplotlib.pyplot as plt
 from matplotlib.widgets import Button
+from PIL import Image
 
 
 # Create a Rich console
@@ -1003,6 +1004,161 @@ def extract_games_by_length(games: List[List[int]], length: int) -> List[Tuple[i
 # end def extract_games_by_length
 
 
+def crop_to_square(image_path: str) -> None:
+    """
+    Crop an image to make it square based on the smaller dimension.
+    
+    Args:
+        image_path (str): Path to the image file
+    """
+    # Open the image
+    img = Image.open(image_path)
+    
+    # Get image dimensions
+    width, height = img.size
+    
+    # Determine the smaller dimension
+    min_dim = min(width, height)
+    
+    # Calculate cropping box (centered)
+    left = (width - min_dim) // 2
+    top = (height - min_dim) // 2
+    right = left + min_dim
+    bottom = top + min_dim
+    
+    # Crop the image
+    cropped_img = img.crop((left, top, right, bottom))
+    
+    # Save the cropped image back to the same path
+    cropped_img.save(image_path)
+
+
+def extract_game_as_images(game_file: str, game_index: int, output_dir: str, image_size: int = 8) -> None:
+    """
+    Extract each state of an Othello game as images without borders and title.
+    The images are cropped to be square based on the smaller dimension.
+    
+    Args:
+        game_file (str): Path to the binary file containing games
+        game_index (int): Index of the game to extract
+        output_dir (str): Directory to save the images
+        image_size (int): Size of the output images in inches (default: 8)
+    """
+    # Create a Rich console
+    console = Console()
+    
+    # Load games from the input file
+    console.print(f"Loading games from {game_file}...", style="blue")
+    games = load_games(game_file)
+    console.print(f"Loaded {len(games)} games.")
+    
+    # Extract the game at the specified index
+    try:
+        game_moves = extract_game_by_index(games, game_index)
+        console.print(f"Extracting game at index {game_index} with {len(game_moves) - 1} moves.", style="green")
+    except ValueError as e:
+        console.print(f"Error: {e}", style="bold red")
+        return
+    
+    # Convert move IDs to notations (skipping BOS token)
+    move_notations = convert_ids_to_notation(game_moves)
+    
+    # Log the game moves
+    console.print(f"Game {game_index} has moves {move_notations}.", style="cyan")
+    
+    # Create a board to replay the game
+    board = OthelloGame.load_moves(move_notations)
+    
+    # Create output directory if it doesn't exist
+    import os
+    os.makedirs(output_dir, exist_ok=True)
+    
+    # Save initial board state
+    console.print(f"Saving board states as images to {output_dir}...", style="blue")
+    
+    # Create a figure for the initial board
+    fig, ax = plt.subplots(figsize=(image_size, image_size))
+    
+    # Draw the green background
+    ax.add_patch(plt.Rectangle((0, 0), 8, 8, color='green'))
+    
+    # Draw the grid lines
+    for i in range(9):
+        ax.plot([i, i], [0, 8], 'k-', lw=1)
+        ax.plot([0, 8], [i, i], 'k-', lw=1)
+    
+    # Draw the four initial pieces
+    ax.add_patch(plt.Circle((3.5, 3.5), 0.4, color='white'))
+    ax.add_patch(plt.Circle((4.5, 4.5), 0.4, color='white'))
+    ax.add_patch(plt.Circle((3.5, 4.5), 0.4, color='black'))
+    ax.add_patch(plt.Circle((4.5, 3.5), 0.4, color='black'))
+    
+    # Remove borders, ticks, and labels
+    ax.set_xticks([])
+    ax.set_yticks([])
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    ax.spines['bottom'].set_visible(False)
+    ax.spines['left'].set_visible(False)
+    
+    # Save the initial board
+    initial_board_path = f"{output_dir}/board_initial.png"
+    plt.savefig(initial_board_path, bbox_inches='tight', pad_inches=0)
+    plt.close(fig)
+    
+    # Crop the image to make it square
+    crop_to_square(initial_board_path)
+    
+    # For each move, draw and save the board state
+    for move_idx in range(len(board.moves)):
+        # Create a new figure for each move
+        fig, ax = plt.subplots(figsize=(image_size, image_size))
+        
+        # Draw the green background
+        ax.add_patch(plt.Rectangle((0, 0), 8, 8, color='green'))
+        
+        # Draw the grid lines
+        for i in range(9):
+            ax.plot([i, i], [0, 8], 'k-', lw=1)
+            ax.plot([0, 8], [i, i], 'k-', lw=1)
+        
+        # Create a temporary game to replay up to this move
+        temp_game = OthelloGame()
+        
+        # Replay the game up to the current move
+        for m_i in range(move_idx + 1):
+            move = board.moves[m_i]
+            row, col = temp_game.notation_to_coords(move)
+            temp_game.make_move(row, col)
+        
+        # Draw the complete board state
+        for row in range(8):
+            for col in range(8):
+                piece = temp_game.board.get_piece(row, col)
+                if piece == temp_game.BLACK:
+                    ax.add_patch(plt.Circle((col + 0.5, row + 0.5), 0.4, color='black'))
+                elif piece == temp_game.WHITE:
+                    ax.add_patch(plt.Circle((col + 0.5, row + 0.5), 0.4, color='white'))
+        
+        # Remove borders, ticks, and labels
+        ax.set_xticks([])
+        ax.set_yticks([])
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+        ax.spines['bottom'].set_visible(False)
+        ax.spines['left'].set_visible(False)
+        
+        # Save the board state
+        move_board_path = f"{output_dir}/board_move_{move_idx+1:03d}.png"
+        plt.savefig(move_board_path, bbox_inches='tight', pad_inches=0)
+        plt.close(fig)
+        
+        # Crop the image to make it square
+        crop_to_square(move_board_path)
+    
+    console.print(f"Saved {len(board.moves) + 1} board states as images.", style="green")
+
+
 def view_game(game_file: str, game_index: int) -> None:
     """
     Display an interactive visualization of an Othello game using matplotlib.
@@ -1182,6 +1338,15 @@ def main():
         --index: Index of the game to extract
         --length: Length of games to extract
         --output: Output file path for extracted games
+        
+    Command-line arguments for viewing games:
+        --input: Input file path containing games
+        --index: Index of the game to view
+        
+    Command-line arguments for extracting games as images:
+        --input: Input file path containing games
+        --index: Index of the game to extract
+        --output-dir: Directory to save the images
     """
     global console
     import os
@@ -1276,8 +1441,35 @@ def main():
         help='Index of the game to view'
     )
     
+    # Parser for extract-images command
+    extract_images_parser = subparsers.add_parser('extract-images', help='Extract a game as images without borders and title')
+    extract_images_parser.add_argument(
+        '--input',
+        type=str,
+        required=True,
+        help='Input file path containing games'
+    )
+    extract_images_parser.add_argument(
+        '--index',
+        type=int,
+        required=True,
+        help='Index of the game to extract'
+    )
+    extract_images_parser.add_argument(
+        '--output-dir',
+        type=str,
+        required=True,
+        help='Directory to save the images'
+    )
+    extract_images_parser.add_argument(
+        '--image-size',
+        type=int,
+        default=8,
+        help='Size of the output images in inches (default: 8)'
+    )
+    
     # For backward compatibility, if no command is specified, assume generate
-    if len(sys.argv) > 1 and sys.argv[1] not in ['generate', 'extract', 'view']:
+    if len(sys.argv) > 1 and sys.argv[1] not in ['generate', 'extract', 'view', 'extract-images']:
         # Add the generate command
         sys.argv.insert(1, 'generate')
     # end if
@@ -1421,6 +1613,9 @@ def main():
     elif args.command == 'view':
         # Launch the interactive game viewer
         view_game(args.input, args.index)
+    elif args.command == 'extract-images':
+        # Extract game as images
+        extract_game_as_images(args.input, args.index, args.output_dir, args.image_size)
 # end main
 
 
