@@ -7,7 +7,6 @@ log_interval: 1                 # How often to log training progress
 eval_iters: 4                 # Number of batches to use for evaluation
 eval_only: false                # If True, script exits right after the first eval
 always_save_checkpoint: true    # If True, always save a checkpoint after each eval
-init_from: 'scratch'            # 'scratch', 'resume', or 'gpt2*'
 
 # wandb logging settings
 wandb_log: false                # Whether to use wandb logging (disabled by default)
@@ -16,10 +15,8 @@ wandb_run_name: 'gpt2'          # Run name for wandb
 
 # Data settings
 board_game: "othello"
-train_data_filename: "synthetic-train.bin"
-val_data_filename: "synthetic-val.bin"              # Dataset name
 gradient_accumulation_steps: 2        # Used to simulate larger batch sizes (5 * 8)
-batch_size: 512                         # If gradient_accumulation_steps > 1, this is the micro-batch size
+batch_size: 768                         # If gradient_accumulation_steps > 1, this is the micro-batch size
 block_size: 61                         # Context size for the model
 
 # Model architecture settings

@@ -16,17 +16,19 @@ The script handles:
 Examples:
 ---------
 To run on a single GPU:
-$ python train.py --batch_size=32 --compile=False
+$ python train.py --data_dir=/path/to/data --batch_size=32 --compile=False
 
 To run with DDP on 4 gpus on 1 node:
-$ torchrun --standalone --nproc_per_node=4 train.py
+$ torchrun --standalone --nproc_per_node=4 train.py --data_dir=/path/to/data
 
 To run with DDP on 4 gpus across 2 nodes:
 - Run on the first (master) node with example IP 123.456.123.456:
-$ torchrun --nproc_per_node=8 --nnodes=2 --node_rank=0 --master_addr=123.456.123.456 --master_port=1234 train.py
+$ torchrun --nproc_per_node=8 --nnodes=2 --node_rank=0 --master_addr=123.456.123.456 --master_port=1234 train.py --data_dir=/path/to/data
 - Run on the worker node:
-$ torchrun --nproc_per_node=8 --nnodes=2 --node_rank=1 --master_addr=123.456.123.456 --master_port=1234 train.py
+$ torchrun --nproc_per_node=8 --nnodes=2 --node_rank=1 --master_addr=123.456.123.456 --master_port=1234 train.py --data_dir=/path/to/data
 (If your cluster does not have Infiniband interconnect prepend NCCL_IB_DISABLE=1)
+
+Note: The data directory must contain 'train' and 'val' folders with bin files for each split.
 """
 
 # Imports
@@ -61,6 +63,12 @@ def parse_args():
     parser = argparse.ArgumentParser(description='Train a GPT model for board games')
     parser.add_argument('--config', type=str, default='config.yaml', 
                         help='Path to the YAML configuration file')
+    parser.add_argument('--data_dir', type=str, required=True,
+                        help='Path to the data directory. This directory must contain "train" and "val" folders with bin files for each split.')
+    parser.add_argument('--ckpt', type=str, default=None,
+                        help='Path to a checkpoint file (.pt) to load weights from. If not specified, a new model will be initialized from scratch.')
+    parser.add_argument('--num-iter', type=int, default=None,
+                        help='Iteration number to start from when resuming from a checkpoint. Used with --ckpt.')
     return parser.parse_args()
 # end def parse_args
 
@@ -162,48 +170,97 @@ def setup_training_environment(config):
     return ddp, master_process, seed_offset, ddp_world_size, ddp_local_rank, device, device_type, ctx, gradient_accumulation_steps
 # end setup_training_environment
 
+# Global variables to store loaded data
+_train_data = None
+_val_data = None
+
 def get_board_batch(split, config, device, device_type):
     """
     Get a random batch of board game data from the specified split.
     
     Args:
         split (str): 'train' or 'val' to specify which data split to use
-        config (dict): Configuration dictionary
+        config (dict): Configuration dictionary containing 'data_dir' which points to a directory
+                      with 'train' and 'val' folders containing bin files for each split
         device (str): Device to use for tensors
         device_type (str): Type of device ('cuda' or 'cpu')
         
     Returns:
         tuple: (x, y) where x is input tokens and y is target tokens
     """
-    # Data dir
-    data_dir = os.path.join("data", config['board_game'])
-
-    # Data filename
-    data_filename = config['train_data_filename'] if split == 'train' else config['val_data_filename']
-
-    # Load data
-    # game_sequences is a list of list of ints (List[List[int])
-    with open(os.path.join(data_dir, data_filename), 'rb') as f:
-        game_sequences: List[np.array] = pickle.load(f)
-    # end with
-
-    # Concatenate games sequences
-    game_sequences: List[int] = [x for sublist in game_sequences for x in sublist.tolist()]
-
+    global _train_data, _val_data
+    
+    # Load all data into memory if not already loaded
+    if (split == 'train' and _train_data is None) or (split == 'val' and _val_data is None):
+        print(f"Loading {split} data into memory...")
+        
+        # Data dir for the specified split (train or val)
+        data_dir = os.path.join(config['data_dir'], split)
+        
+        # Pattern for bin files
+        pattern = "*.bin"
+        
+        # Find all matching bin files
+        import glob
+        bin_files = glob.glob(os.path.join(data_dir, pattern))
+        
+        if not bin_files:
+            # If no bin files found in the specified directory, print an error message
+            print(f"Error: No bin files found in {data_dir}. Make sure the data directory contains 'train' and 'val' folders with bin files.")
+            
+            # Fallback to old method if no matching files found
+            fallback_data_dir = os.path.join("data", config['board_game'])
+            data_filename = config['train_data_filename'] if split == 'train' else config['val_data_filename']
+            
+            print(f"Falling back to {os.path.join(fallback_data_dir, data_filename)}")
+            
+            with open(os.path.join(fallback_data_dir, data_filename), 'rb') as f:
+                game_sequences = pickle.load(f)
+            # end with
+        else:
+            # Load all bin files and combine their data
+            print(f"Found {len(bin_files)} bin files for {split} split")
+            game_sequences = []
+            for bin_file in bin_files:
+                print(f"Loading {bin_file}...")
+                with open(bin_file, 'rb') as f:
+                    sequences = pickle.load(f)
+                    game_sequences.extend(sequences)
+                # end with
+            # end for
+        # end if
+        
+        # Concatenate game sequences
+        all_sequences = [x for sublist in game_sequences for x in sublist.tolist()]
+        print(f"Total sequences for {split}: {len(all_sequences)}")
+        
+        # Store in the appropriate global variable
+        if split == 'train':
+            _train_data = all_sequences
+            print(f"Train data loaded into memory")
+        else:
+            _val_data = all_sequences
+            print(f"Validation data loaded into memory")
+        # end if
+    # end if
+    
+    # Get the appropriate data based on the split
+    game_sequences = _train_data if split == 'train' else _val_data
+    
     # Sample random sequence start position
     ix = [random.randint(0, len(game_sequences)-config['block_size']-1) for _ in range(config['batch_size'])]
-
+    
     # Select subsequences
     x = torch.stack([torch.tensor(game_sequences[i:i+config['block_size']], dtype=torch.long) for i in ix])
     y = torch.stack([torch.tensor(game_sequences[i+1:i+1+config['block_size']], dtype=torch.long) for i in ix])
-
+    
     # Device type
     if device_type == 'cuda':
         x, y = x.pin_memory().to(device, non_blocking=True), y.pin_memory().to(device, non_blocking=True)
     else:
         x, y = x.to(device), y.to(device)
     # end if
-
+    
     return x, y
 # end get_board_batch
 
@@ -213,7 +270,8 @@ def get_batch(split, config, device, device_type):
     
     Args:
         split (str): 'train' or 'val' to specify which data split to use
-        config (dict): Configuration dictionary
+        config (dict): Configuration dictionary containing 'data_dir' which points to a directory
+                      with 'train' and 'val' folders containing bin files for each split
         device (str): Device to use for tensors
         device_type (str): Type of device ('cuda' or 'cpu')
         
@@ -222,12 +280,21 @@ def get_batch(split, config, device, device_type):
     """
     # We recreate np.memmap every batch to avoid a memory leak, as per
     # https://stackoverflow.com/questions/45132940/numpy-memmap-memory-usage-want-to-iterate-once/61472122#61472122
-    data_dir = os.path.join('data', config['dataset'])
     
-    if split == 'train':
-        data = np.memmap(os.path.join(data_dir, 'train.bin'), dtype=np.uint16, mode='r')
-    else:
-        data = np.memmap(os.path.join(data_dir, 'val.bin'), dtype=np.uint16, mode='r')
+    # Use the data directory from the configuration, with the appropriate split folder
+    data_dir = os.path.join(config['data_dir'], split)
+    bin_file = os.path.join(data_dir, f'{split}.bin')
+    
+    # Check if the bin file exists
+    if not os.path.exists(bin_file):
+        print(f"Error: {bin_file} not found. Make sure the data directory contains 'train' and 'val' folders with bin files.")
+        # Fallback to old method
+        fallback_data_dir = os.path.join('data', config['dataset'])
+        bin_file = os.path.join(fallback_data_dir, f'{split}.bin')
+        print(f"Falling back to {bin_file}")
+    
+    # Load the data
+    data = np.memmap(bin_file, dtype=np.uint16, mode='r')
     # end if
     
     # Sample random indices for batch
@@ -247,13 +314,16 @@ def get_batch(split, config, device, device_type):
     return x, y
 # end get_batch
 
-def initialize_model(config, device):
+def initialize_model(config, device, ckpt_path=None, start_iter=None):
     """
-    Initialize the model based on the init_from parameter.
+    Initialize the model based on checkpoint arguments or from scratch.
     
     Args:
         config (dict): Configuration dictionary
         device (str): Device to use for the model
+        ckpt_path (str, optional): Path to a checkpoint file to load weights from.
+        start_iter (int, optional): Iteration number to start from when resuming from a checkpoint.
+                                   If provided with ckpt_path, overrides the iteration number in the checkpoint.
         
     Returns:
         tuple: (model, iter_num, best_val_loss, model_args) where model is the initialized GPT model,
@@ -278,20 +348,11 @@ def initialize_model(config, device):
     # Vocab size
     vocab_size = config['vocab_size']
     
-    # Initialize model based on init_from parameter
-    if config['init_from'] == 'scratch':
-        # Initialize a new model from scratch
-        print("Initializing a new model from scratch")
-
-        # Create the model
-        model_args['vocab_size'] = vocab_size if vocab_size is not None else 50304
-        gptconf = GPTConfig(**model_args)
-        model = GPT(gptconf)
-    elif config['init_from'] == 'resume':
-        print(f"Resuming training from {config['out_dir']}")
+    # Check if a specific checkpoint path is provided via command line
+    if ckpt_path is not None:
+        print(f"Loading checkpoint from specified path: {ckpt_path}")
         
-        # Resume training from a checkpoint
-        ckpt_path = os.path.join(config['out_dir'], 'ckpt.pt')
+        # Load the checkpoint
         checkpoint = torch.load(ckpt_path, map_location=device)
         checkpoint_model_args = checkpoint['model_args']
         
@@ -318,19 +379,24 @@ def initialize_model(config, device):
 
         # Load weights
         model.load_state_dict(state_dict)
-        iter_num = checkpoint['iter_num']
+        
+        # Set iteration number - use command line value if provided, otherwise use checkpoint value
+        if start_iter is not None:
+            iter_num = start_iter
+            print(f"Starting from iteration {iter_num} as specified by --num-iter")
+        else:
+            iter_num = checkpoint['iter_num']
+            print(f"Resuming from iteration {iter_num} from checkpoint")
+        
         best_val_loss = checkpoint['best_val_loss']
-    elif config['init_from'].startswith('gpt2'):
-        print(f"Initializing from OpenAI GPT-2 weights: {config['init_from']}")
-        
-        # Initialize from OpenAI GPT-2 weights
-        override_args = dict(dropout=config['dropout'])
-        model = GPT.from_pretrained(config['init_from'], override_args)
-        
-        # Read off the created config params, so we can store them into checkpoint correctly
-        for k in ['n_layer', 'n_head', 'n_embd', 'block_size', 'bias', 'vocab_size']:
-            model_args[k] = getattr(model.config, k)
-        # end for
+    else:
+        # Initialize a new model from scratch
+        print("Initializing a new model from scratch")
+
+        # Create the model
+        model_args['vocab_size'] = vocab_size if vocab_size is not None else 50304
+        gptconf = GPTConfig(**model_args)
+        model = GPT(gptconf)
     # end if
     
     # Crop down the model block size if desired, using model surgery
@@ -439,8 +505,8 @@ def setup_optimizer(model, config, device_type, checkpoint=None):
         device_type
     )
     
-    # Load optimizer state if resuming training
-    if config['init_from'] == 'resume' and checkpoint is not None:
+    # Load optimizer state if checkpoint is provided
+    if checkpoint is not None:
         optimizer.load_state_dict(checkpoint['optimizer'])
     # end if
     
@@ -475,7 +541,13 @@ def save_checkpoint(
     }
     
     print(f"saving checkpoint to {config['out_dir']}")
+    # Save with standard name for backward compatibility
     torch.save(checkpoint, os.path.join(config['out_dir'], 'ckpt.pt'))
+    
+    # Save with iteration number in filename
+    iter_filename = f'ckpt_iter{iter_num}.pt'
+    torch.save(checkpoint, os.path.join(config['out_dir'], iter_filename))
+    print(f"also saved checkpoint as {iter_filename}")
 # end save_checkpoint
 
 def main():
@@ -488,11 +560,15 @@ def main():
     # Load configuration from YAML file
     config = load_config(args.config)
     
+    # Add data directory from command line arguments to the configuration
+    config['data_dir'] = args.data_dir
+    print(f"Using data directory: {config['data_dir']}")
+    
     # Set up the training environment
     ddp, master_process, seed_offset, ddp_world_size, ddp_local_rank, device, device_type, ctx, gradient_accumulation_steps = setup_training_environment(config)
     
     # Initialize the model
-    model, iter_num, best_val_loss, model_args = initialize_model(config, device)
+    model, iter_num, best_val_loss, model_args = initialize_model(config, device, args.ckpt, args.num_iter)
     
     # Set up the optimizer and gradient scaler
     optimizer, scaler = setup_optimizer(model, config, device_type)
@@ -552,10 +628,7 @@ def main():
             if config['wandb_log']:
                 wandb.log({
                     "iter": iter_num,
-                    "train/loss": losses['train'],
-                    "val/loss": losses['val'],
-                    "lr": lr,
-                    "mfu": running_mfu*100,  # Convert to percentage
+                    "val/loss": losses['val']
                 })
             # end if
             
@@ -631,6 +704,13 @@ def main():
             # end if
             
             print(f"iter {iter_num}: loss {lossf:.4f}, time {dt*1000:.2f}ms, mfu {running_mfu*100:.2f}%")
+
+            wandb.log({
+                "iter": iter_num,
+                "train/loss": lossf,
+                "lr": lr,
+                "mfu": running_mfu * 100,  # Convert to percentage
+            })
         # end if
         
         # Increment iteration counters
