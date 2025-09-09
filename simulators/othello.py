@@ -402,10 +402,22 @@ class OthelloGame:
             
         Returns:
             Tuple[int, int]: (row, col) coordinates (e.g., (3, 4) for 'e4')
+            
+        Raises:
+            ValueError: If the notation is not in the expected format (letter followed by number)
         """
+        # Check if the notation is valid (a letter followed by a number)
+        if len(notation) != 2 or not notation[0].isalpha() or not notation[1].isdigit():
+            raise ValueError(f"Invalid move notation: '{notation}'. Expected format is a letter (a-h) followed by a number (1-8).")
+        
         # Convert letter (a-h) to column index (0-7) and number (1-8) to row index (0-7)
-        col = ord(notation[0]) - 97  # 'a' is ASCII 97, so 'a' -> 0, 'b' -> 1, etc.
+        col = ord(notation[0].lower()) - 97  # 'a' is ASCII 97, so 'a' -> 0, 'b' -> 1, etc.
         row = int(notation[1]) - 1   # '1' -> 0, '2' -> 1, etc.
+        
+        # Check if the coordinates are within the board boundaries
+        if not (0 <= col < self.SIZE and 0 <= row < self.SIZE):
+            raise ValueError(f"Invalid move notation: '{notation}'. Coordinates out of bounds.")
+            
         return row, col
     # end notation_to_coords
 
@@ -596,32 +608,53 @@ class OthelloGame:
     @staticmethod
     def load_moves(moves: List[str]) -> 'OthelloGame':
         """
-        ...
+        Load a sequence of moves and create an Othello game board.
+        
+        Args:
+            moves (List[str]): List of moves in standard notation (e.g., ['c4', 'd3', ...])
+            
+        Returns:
+            OthelloGame: A game board with the moves applied
         """
         # Instance class
         board = OthelloGame()
+        
+        # Keep track of valid moves
+        valid_moves = []
 
         # For each move
         for m in moves:
-            # Transform to coordinates
-            row, col = board.notation_to_coords(m)
+            try:
+                # Transform to coordinates
+                row, col = board.notation_to_coords(m)
 
-            # Check if the move is valid
-            if board.is_valid_move(row, col):
-                # Make to move
-                board.make_move(row, col)
-            else:
-                # Switch player
-                board.switch_player()
+                # Check if the move is valid
+                if board.is_valid_move(row, col):
+                    # Make the move
+                    board.make_move(row, col)
+                    valid_moves.append(m)
+                else:
+                    # Switch player
+                    board.switch_player()
 
-                # Check that the move is valid
-                assert board.is_valid_move(row, col), f"Invalid move detected: {m}"
-
-                # Make the move
-                board.make_move(row, col)
-            # end if
+                    # Check that the move is valid for the other player
+                    if board.is_valid_move(row, col):
+                        # Make the move
+                        board.make_move(row, col)
+                        valid_moves.append(m)
+                    else:
+                        print(f"Warning: Skipping invalid move: {m} (not valid for either player)")
+                    # end if
+                # end if
+            except ValueError as e:
+                # Skip invalid move notations
+                print(f"Warning: {str(e)}")
+            # end try
         # end for
 
+        # Update the moves list to include only valid moves
+        board.moves = valid_moves
+        
         return board
     # end load_moves
 

@@ -15,6 +15,7 @@ https://github.com/huggingface/transformers/blob/main/src/transformers/models/gp
 import math
 import inspect
 from dataclasses import dataclass
+from typing import Dict, Tuple, List
 
 import torch
 import torch.nn as nn
@@ -621,6 +622,120 @@ class GPT(nn.Module):
         print(f"Successfully loaded weights from {filepath}")
         return self
     # end def load_safetensors
+
+    # Create a mapping from move notation to ID
+    # The vocabulary size is 61: BOS token (0) + 60 possible moves (1-60)
+    @staticmethod
+    def create_move_mapping() -> Tuple[Dict[str, int], Dict[int, str]]:
+        """
+        Create a mapping from move notation to ID.
+
+        The mapping includes:
+        - BOS (Beginning of Sequence) token with ID 0
+        - All possible moves on an 8x8 board with IDs 1-60
+
+        Returns:
+            Tuple[Dict[str, int], Dict[int, str]]: Mapping from move notation to ID
+        """
+        # Create a dictionary to store the mapping
+        move_to_id = {"BOS": 0}  # BOS token has ID 0
+
+        # Generate all possible move notations (a1-h8)
+        id_counter = 1
+        for col in range(8):  # a-h
+            for row in range(8):  # 1-8
+                # Move not possible on the centered square
+                if (3 <= col <= 4) and (3 <= row <= 4):
+                    continue
+                # end if
+                notation = chr(97 + col) + str(row + 1)
+                move_to_id[notation] = id_counter
+                id_counter += 1
+            # end for
+        # end for
+
+        id_to_move = {i:m for m, i in move_to_id.items()}
+
+        return move_to_id, id_to_move
+    # end create_move_mapping
+
+    @staticmethod
+    def to_idx(sequence: List[str], add_pos: bool = True) -> List[int]:
+        """
+        Convert sequence to ID.
+
+        Args:
+            sequence (List[str]): Sequence to convert to ID
+            add_pos (bool): If True, add position to sequence
+
+        Returns:
+            List[int]: Converted sequence
+        """
+        move_to_id, _ = GPT.create_move_mapping()
+        if add_pos:
+            return [
+                0,
+                *[move_to_id[m.lower()] for m in sequence],
+            ]
+        else:
+            return [
+                move_to_id[m.lower()]
+                for m in sequence
+            ]
+        # end if
+    # end def to_idx
+
+    @staticmethod
+    def to_moves(idx: List[int]) -> List[str]:
+        """
+        Convert ID to move.
+
+        Args:
+            idx (List[int]): ID to convert to move
+
+        Returns:
+            List[str]: Converted move (excluding BOS tokens)
+        """
+        _, id_to_move = GPT.create_move_mapping()
+        # Filter out BOS tokens (ID 0) before converting to move notations
+        return [
+            id_to_move[i] for i in idx if i != 0  # Skip BOS tokens
+        ]
+    # end to_moves
+
+    def generate_moves(
+            self,
+            sequence: List[str],
+            max_new_tokens: int,
+            add_pos: bool = True,
+            temperature: float = 1.0,
+            top_k: int = None,
+    ) -> List[str]:
+        """
+        Generate moves from sequence.
+
+        Args:
+            sequence (List[str]): Sequence to generate
+            max_new_tokens (int): Maximum number of tokens to generate
+            add_pos (bool): If True, add position to sequence
+            temperature (float): Temperature parameter
+            top_k (int): If specified, only generate tokens with this many tokens
+        """
+        # Transform sequence to idx
+        idx = GPT.to_idx(sequence, add_pos=add_pos)
+
+        # Generate tokens
+        # gen_seq is (seq_len + max_new_token)
+        gen_seq: torch.Tensor = self.generate(
+            idx=torch.LongTensor(idx).unsqueeze(0),
+            max_new_tokens=max_new_tokens,
+            temperature=temperature,
+            top_k=top_k
+        )[0]
+
+        # Transform into str sequence
+        return GPT.to_moves(gen_seq.tolist())
+    # end generate_tokens
 
     @torch.no_grad()
     def generate(self, idx, max_new_tokens, temperature=1.0, top_k=None):
