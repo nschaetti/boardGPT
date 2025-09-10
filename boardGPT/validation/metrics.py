@@ -11,33 +11,27 @@ from boardGPT.datasets.utils import load_othello_dataset
 from simulators.othello import OthelloGame, create_id_to_move_mapping, create_move_mapping
 
 
-def is_valid(move_id: int, previous_moves: List[int]) -> bool:
+def is_valid(move: str, previous_moves: List[str]) -> bool:
     """
     Check if a move is valid given a sequence of previous moves.
     
     Args:
-        move_id (int): The ID of the move to check
-        previous_moves (List[int]): List of previous move IDs (including BOS token)
+        move (str): The move to check.
+        previous_moves (List[str]): The sequence of previous moves.
         
     Returns:
         bool: True if the move is valid, False otherwise
     """
-    # Get the mapping from ID to move notation
-    id_to_move = create_id_to_move_mapping()
-    
-    # Skip BOS token (ID 0) if present in previous_moves
-    game_moves = [id_to_move[move] for move in previous_moves if move != 0]
-    
     # Convert the move_id to move notation
-    if move_id == 0:  # BOS token is not a valid move
+    if move == "BOS":  # BOS token is not a valid move
         return False
-    move_notation = id_to_move[move_id]
+    # end if
     
     # Create a new Othello game
     game = OthelloGame()
     
     # Apply all previous moves to the game
-    for move in game_moves:
+    for move in previous_moves:
         # Convert move notation to coordinates
         row, col = game.notation_to_coords(move)
         
@@ -46,10 +40,79 @@ def is_valid(move_id: int, previous_moves: List[int]) -> bool:
         if not success:
             # If a previous move is invalid, the game state is invalid
             return False
+        # end if
+    # end for
     
     # Check if the new move is valid
-    row, col = game.notation_to_coords(move_notation)
+    row, col = game.notation_to_coords(move)
     return game.is_valid_move(row, col)
+# end def is_valid
+
+def is_valid_game_sequence(game: List[str]) -> bool:
+    """
+    Check if a game sequence is valid.
+    
+    Args:
+        game (List[str]): List of move notations representing a game sequence
+        
+    Returns:
+        bool: True if the game sequence is valid, False otherwise
+        
+    Raises:
+        ValueError: If any move before the last one is invalid
+    """
+    # Create a new Othello game
+    othello_game = OthelloGame()
+    
+    # Apply all moves except the last one to the game
+    for i, move in enumerate(game[:-1]):
+        # Check if the current player has any valid moves
+        valid_moves = othello_game.get_valid_moves()
+        if not valid_moves:
+            # If no valid moves, the player must pass
+            othello_game.switch_player()
+        
+        # Convert move notation to coordinates
+        row, col = othello_game.notation_to_coords(move)
+        
+        # Check if the move is valid
+        if not othello_game.is_valid_move(row, col):
+            raise ValueError(f"Move {i+1} '{move}' is invalid, but it's not the last move")
+        # end if
+
+        # Make the move
+        success = othello_game.make_move(row, col)
+        if not success:
+            raise ValueError(f"Failed to make move {i+1} '{move}', but it's not the last move")
+        # end if
+    # end for
+    
+    # Check the last move separately
+    if game:
+        # Check if the current player has any valid moves
+        valid_moves = othello_game.get_valid_moves()
+        if not valid_moves:
+            # If no valid moves, the player must pass
+            othello_game.switch_player()
+        # end if
+            
+        last_move = game[-1]
+        row, col = othello_game.notation_to_coords(last_move)
+        
+        # Check if the last move is valid
+        if not othello_game.is_valid_move(row, col):
+            return False
+        # end if
+            
+        # Make the last move
+        success = othello_game.make_move(row, col)
+        if not success:
+            return False
+        # end if
+    # end if
+    
+    return True
+# end def is_valid
 
 
 def invalid_move_rate(
@@ -58,7 +121,6 @@ def invalid_move_rate(
         split: str = "val",
         data_filename: str = "val.pkl",
         num_samples: int = 1000,
-        max_new_tokens: int = 1,
         temperature: float = 1.0,
         top_k: int = None
 ) -> float:
@@ -71,7 +133,6 @@ def invalid_move_rate(
         split (str): Dataset split to use ("train" or "val")
         data_filename (str): Filename for the dataset
         num_samples (int): Number of samples to evaluate
-        max_new_tokens (int): Number of new tokens to generate
         temperature (float): Temperature for sampling
         top_k (int): Top-k sampling parameter
         
@@ -79,7 +140,12 @@ def invalid_move_rate(
         float: Average rate of invalid moves
     """
     # Load the dataset
-    sequences = load_othello_dataset(data_dir, split, data_filename)
+    sequences: List[List[int]] = load_othello_dataset(
+        data_dir=data_dir,
+        split=split,
+        data_filename=data_filename,
+        flatten=False
+    )
     
     # Ensure we don't try to sample more sequences than available
     num_samples = min(num_samples, len(sequences))
@@ -89,6 +155,7 @@ def invalid_move_rate(
     
     # Get the mapping from ID to move notation
     id_to_move = create_id_to_move_mapping()
+
     # Get the mapping from move notation to ID
     move_to_id = create_move_mapping()
     
@@ -103,43 +170,47 @@ def invalid_move_rate(
         # end if
         
         # Choose a random length for the opening moves (max 59 to have at least one move to predict)
-        max_length = min(59, len(sequence) - 1)
+        max_length: int = min(59, len(sequence) - 1)
         if max_length <= 0:
             continue  # Skip sequences that are too short
         # end if
 
         # Length of the opening sequence
-        opening_length = random.randint(1, max_length)
+        opening_length: int = random.randint(1, max_length)
         
         # Get opening moves
-        opening_moves = sequence[:opening_length]
+        opening_moves: List[int] = sequence[:opening_length]
         
         # Convert opening moves from IDs to move notation
         opening_moves_notation = [id_to_move[move] for move in opening_moves if move != 0]
-        
+
         # Generate the next move using the model
-        generated_moves = model.generate_moves(
+        generated_moves: List[str] = model.generate_moves(
             sequence=opening_moves_notation,
-            max_new_tokens=max_new_tokens,
+            max_new_tokens=1,
             temperature=temperature,
             top_k=top_k
         )
-        
+
         # Get the first generated move
         if generated_moves and len(generated_moves) > 0:
-            generated_move_notation = generated_moves[0]
-            
-            # Convert the generated move from notation to ID
-            if generated_move_notation in move_to_id:
-                generated_move_id = move_to_id[generated_move_notation]
-                
-                # Check if the generated move is valid
-                if not is_valid(generated_move_id, opening_moves):
-                    total_invalid += 1
-                # end if
-                
-                total_moves += 1
+            # Check if the generated move is valid using the original is_valid function
+            if not is_valid_game_sequence(generated_moves):
+                total_invalid += 1
             # end if
+
+            # Alternatively, we could use the new is_valid_game_sequence function:
+            # game_sequence = opening_moves_notation + [generated_move_notation]
+            # try:
+            #     if not is_valid_game_sequence(game_sequence):
+            #         total_invalid += 1
+            # except ValueError as e:
+            #     # If an error is raised for a move before the last one, log it but don't count it
+            #     # as an invalid move since the issue is with the dataset, not the model's prediction
+            #     print(f"Warning: {e}")
+            # # end try
+
+            total_moves += 1
         # end if
     # end for
     
