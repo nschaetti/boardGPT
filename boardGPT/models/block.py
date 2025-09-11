@@ -11,6 +11,7 @@ import torch.nn.functional as F
 
 from .layer_norm import LayerNorm
 from .hooks import HookPoint
+from .register import ActivationRecorder
 
 
 class MLP(nn.Module):
@@ -102,12 +103,19 @@ class CausalSelfAttention(nn.Module):
         # end if
     # end __init__
 
-    def forward(self, x):
+    def forward(
+            self,
+            x,
+            recorder: ActivationRecorder = None,
+            recorder_prefix: str = ""
+    ):
         """
         Apply causal self-attention to the input.
 
         Args:
             x (torch.Tensor): Input tensor of shape (batch_size, seq_len, n_embd)
+            recorder: Activation recorder
+            recorder_prefix: str
 
         Returns:
             torch.Tensor: Output tensor of shape (batch_size, seq_len, n_embd)
@@ -156,6 +164,9 @@ class CausalSelfAttention(nn.Module):
             att = att.masked_fill(~causal_mask, float('-inf'))
             att = F.softmax(att, dim=-1)
             self.qk_hook(att)
+            if recorder is not None:
+                recorder.save(f"{recorder_prefix}.QK", att)
+            # end if
             att = self.attn_dropout(att)
             y = att @ v  # (B, nh, T, T) x (B, nh, T, hs) -> (B, nh, T, hs)
         # end if
@@ -190,28 +201,49 @@ class Block(nn.Module):
         self.mlp = MLP(config)
     # end __init__
 
-    def forward(self, x):
+    def forward(
+            self,
+            x,
+            recorder: ActivationRecorder = None,
+            recorder_prefix: str = ""
+    ):
         """
         Apply transformer block to the input.
 
         Args:
             x (torch.Tensor): Input tensor of shape (batch_size, seq_len, n_embd)
+            recorder (ActivationRecorder): Activation recorder
+            recorder_prefix (str): Prefix to add to recorder
 
         Returns:
             torch.Tensor: Output tensor of shape (batch_size, seq_len, n_embd)
         """
         # Block.x: torch.Size([b, t, 512])
         # Block.attn: torch.Size([b, t, 512])
-        attn_out = self.attn(self.ln_1(x))
+        attn_out = self.attn(
+            x=self.ln_1(x),
+            recorder=recorder,
+            recorder_prefix=f"{recorder_prefix}.residuals.attn"
+        )
 
         # Block.x: torch.Size([b, t, 512])
         x = x + attn_out  # residual connection around attention
+
+        # Save activation to recorder
+        if recorder is not None:
+            recorder.save(f"{recorder_prefix}.residuals.attn", x)
+        # end if
 
         # Block.mlp: torch.Size([b, t, 512])
         mlp_out = self.mlp(self.ln_2(x))
 
         # Block.x: torch.Size([b, t, 512])
         x = x + mlp_out  # residual connection around MLP
+
+        # Save activation to recorder
+        if recorder is not None:
+            recorder.save(f"{recorder_prefix}.residuals.mlp", x)
+        # end if
 
         return x
     # end def forward

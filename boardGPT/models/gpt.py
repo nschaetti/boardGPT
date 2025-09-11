@@ -25,6 +25,8 @@ from torch.nn import functional as F
 from .hooks import HookPoint
 from .layer_norm import LayerNorm
 from .block import Block, MLP, CausalSelfAttention
+from .register import ActivationRecorder
+
 
 @dataclass
 class GPTConfig:
@@ -173,13 +175,19 @@ class GPT(nn.Module):
         # end if
     # end def _init_weights
 
-    def forward(self, idx, targets=None):
+    def forward(
+            self,
+            idx: torch.LongTensor,
+            targets: torch.Tensor = None,
+            recorder: ActivationRecorder = None
+    ):
         """
         Forward pass through the model.
 
         Args:
             idx (torch.Tensor): Input token indices of shape (batch_size, seq_len)
             targets (torch.Tensor, optional): Target token indices of shape (batch_size, seq_len)
+            recorder (ActivationRecorder, optional): Activation recorder
 
         Returns:
             tuple: (logits, loss) where logits is the output predictions and loss is the
@@ -200,17 +208,32 @@ class GPT(nn.Module):
         # tok_emb is (b, t, 512)
         tok_emb = self.transformer.wte(idx)  # token embeddings of shape (b, t, n_embd)
         tok_emb = self.token_emb_hook(tok_emb)
+        if recorder is not None:
+            recorder.save(f"gpt.tok_emb", tok_emb)
+        # end if
 
         # pos_emb is (b, t, 512)
         pos_emb = self.transformer.wpe(pos)  # position embeddings of shape (t, n_embd)
         pos_emb = self.pos_emb_hook(pos_emb)
+        if recorder is not None:
+            recorder.save(f"gpt.pos_emb", pos_emb)
+        # end if
 
         # x is (b, t, 512)
         x = self.transformer.drop(tok_emb + pos_emb)
 
+        # Keep initial residuals
+        if recorder is not None:
+            recorder.save(f"gpt.residuals", x)
+        # end if
+
         # Process through transformer blocks
         for (block_i, block) in enumerate(self.transformer.h):
-            x = block(x)
+            x = block(
+                x=x,
+                recorder=recorder,
+                recorder_prefix=f"gpt.layer{block_i}"
+            )
             x = self.residual_hook[block_i](x)
             # output is (b, t, 512)
         # end for
@@ -553,6 +576,7 @@ class GPT(nn.Module):
             add_pos: bool = True,
             temperature: float = 1.0,
             top_k: int = None,
+            recorder: ActivationRecorder = None
     ) -> List[str]:
         """
         Generate moves from sequence.
@@ -565,6 +589,7 @@ class GPT(nn.Module):
             temperature (float): Temperature parameter
             top_k (int): If specified, only generate tokens with this many tokens
             device (torch.device): Device to use
+            recorder (ActivationRecorder): Recorder to record moves
         """
         # Transform sequence to idx
         idx = GPT.to_idx(sequence, add_pos=add_pos)
@@ -578,7 +603,8 @@ class GPT(nn.Module):
             idx=move_idx,
             max_new_tokens=max_new_tokens,
             temperature=temperature,
-            top_k=top_k
+            top_k=top_k,
+            recorder=recorder
         )[0]
 
         # Transform into str sequence
@@ -586,7 +612,14 @@ class GPT(nn.Module):
     # end generate_tokens
 
     @torch.no_grad()
-    def generate(self, idx, max_new_tokens, temperature=1.0, top_k=None):
+    def generate(
+            self,
+            idx,
+            max_new_tokens,
+            temperature=1.0,
+            top_k=None,
+            recorder: ActivationRecorder = None
+    ):
         """
         Generate text by sampling from the model's distribution.
 
@@ -598,6 +631,7 @@ class GPT(nn.Module):
             max_new_tokens (int): Number of new tokens to generate
             temperature (float): Sampling temperature (1.0 = no change, <1.0 = less random, >1.0 = more random)
             top_k (int, optional): If specified, only sample from the top k most probable tokens
+            recorder (ActivationRecorder): Recorder to record moves
 
         Returns:
             torch.Tensor: Generated token indices of shape (batch_size, seq_len + max_new_tokens)
@@ -607,7 +641,10 @@ class GPT(nn.Module):
             idx_cond = idx if idx.size(1) <= self.config.block_size else idx[:, -self.config.block_size:]
 
             # Forward the model to get the logits for the index in the sequence
-            logits, _ = self(idx_cond)
+            logits, _ = self(
+                idx=idx_cond,
+                recorder=recorder,
+            )
 
             # Pluck the logits at the final step and scale by desired temperature
             logits = logits[:, -1, :] / temperature

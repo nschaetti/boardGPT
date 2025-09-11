@@ -5,6 +5,7 @@ from .gpt import (
 )
 from .layer_norm import LayerNorm
 from .block import Block, MLP, CausalSelfAttention
+from .register import ActivationRecorder
 
 # All
 __all__ = [
@@ -14,4 +15,5 @@ __all__ = [
     "CausalSelfAttention",
     "Block",
     "MLP",
+    "ActivationRecorder"
 ]

@@ -1,3 +1,5 @@
+
+
 import matplotlib.pyplot as plt
 from matplotlib.widgets import Button
 from matplotlib.animation import FuncAnimation
@@ -5,6 +7,8 @@ import numpy as np
 from typing import List, Tuple, Optional, Union
 import sys
 import os
+import seaborn as sns
+
 
 from boardGPT.simulators.othello import OthelloGame
 
@@ -530,3 +534,87 @@ def plot_othello_game(moves: Optional[List[str]] = None) -> Union[FuncAnimation,
         # In regular Python scripts, show the animation and return None
         plt.show()
         return animation
+
+
+def plot_attention_matrix(
+        qk_matrix,
+        tokens,
+        head_idx=0,
+        normalize=False
+):
+    """
+    Affiche la matrice de similarité QK (avant softmax).
+
+    Args:
+        qk_matrix: torch.Tensor de forme (batch, n_heads, seq_len, seq_len)
+        tokens: liste de str, les tokens associés à la séquence
+        head_idx: index du head à afficher
+        normalize: si True applique softmax pour convertir en distribution d'attention
+    """
+    # on sélectionne le head demandé
+    att = qk_matrix[0, head_idx].detach().cpu().numpy()
+
+    # optionnel : normalisation softmax (sinon c’est juste QK^T brut)
+    if normalize:
+        import torch.nn.functional as F
+        import torch
+        att = torch.softmax(torch.tensor(att), dim=-1).numpy()
+    # end if
+
+    # Dégradé blanc → rouge
+    cmap = plt.cm.Reds
+    cmap.set_under("white")  # for exact 0
+
+    plt.figure(figsize=(8, 6))
+    plt.imshow(att, cmap=cmap, interpolation="nearest", vmin=0, vmax=1)
+    plt.title(f"Attention (Head {head_idx})")
+    plt.xlabel("Key tokens")
+    plt.ylabel("Query tokens")
+    plt.xticks(range(len(tokens)), tokens, rotation=90)
+    plt.yticks(range(len(tokens)), tokens)
+    plt.grid(False)
+    plt.colorbar().remove()  # pas de barre latérale
+    plt.show()
+# end def plot_attention_matrix
+
+
+def plot_heads_attention(qk_matrix, tokens, layer_idx=0):
+    """
+    Affiche toutes les têtes d'une couche dans une seule figure,
+    avec un dégradé blanc (0.0) → rouge (1.0).
+
+    Args:
+        qk_matrix: torch.Tensor (batch, n_heads, seq_len, seq_len)
+        tokens: liste de str (tokens associés)
+        layer_idx: index de la couche
+    """
+    att = qk_matrix[0].detach().cpu().numpy()  # shape: (n_heads, seq_len, seq_len)
+    n_heads = att.shape[0]
+
+    # Grille auto (2 colonnes pour la lisibilité)
+    ncols = 4 if n_heads >= 4 else n_heads
+    nrows = int(np.ceil(n_heads / ncols))
+
+    cmap = plt.cm.Reds
+    cmap.set_under("white")
+
+    fig, axes = plt.subplots(nrows, ncols, figsize=(3 * ncols, 3 * nrows))
+    axes = axes.flatten()
+
+    for h in range(n_heads):
+        ax = axes[h]
+        ax.imshow(att[h], cmap=cmap, interpolation="nearest", vmin=0, vmax=1)
+        ax.set_title(f"Layer {layer_idx}, Head {h}")
+        ax.set_xticks(range(len(tokens)))
+        ax.set_yticks(range(len(tokens)))
+        ax.set_xticklabels(tokens, rotation=90, fontsize=6)
+        ax.set_yticklabels(tokens, fontsize=6)
+        ax.grid(False)
+    # cacher les cases vides si n_heads < nrows*ncols
+
+    for h in range(n_heads, len(axes)):
+        axes[h].axis("off")
+
+    plt.tight_layout()
+    plt.show()
+# end def plot_heads_attention
