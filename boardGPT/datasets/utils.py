@@ -11,11 +11,12 @@ def load_othello_dataset(
         split: str,
         data_filename: str,
         flatten: bool = True,
+        log: bool = True,
 ) -> Union[List[int], List[List[int]]]:
     """
     ...
     """
-    print(f"Loading {split} data into memory...")
+    if log: print(f"Loading {split} data into memory...")
 
     # Data dir for the specified split (train or val)
     data_dir = os.path.join(data_dir, split)
@@ -44,10 +45,10 @@ def load_othello_dataset(
         # end with
     else:
         # Load all bin files and combine their data
-        print(f"Found {len(bin_files)} bin files for {split} split")
+        if log: print(f"Found {len(bin_files)} bin files for {split} split")
         game_sequences = []
         for bin_file in bin_files:
-            print(f"Loading {bin_file}...")
+            if log: print(f"Loading {bin_file}...")
             with open(bin_file, 'rb') as f:
                 sequences = pickle.load(f)
                 game_sequences.extend(sequences)

@@ -2,9 +2,7 @@ import sys
 import os
 from typing import List, Tuple, Optional
 
-# Add the project root to the path to import from simulators
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
-from simulators.othello import OthelloGame
+from boardGPT.simulators.othello import OthelloGame
 
 def verify_game(moves: List[str]) -> Tuple[bool, List[str]]:
     """

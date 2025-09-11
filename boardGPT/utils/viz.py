@@ -6,9 +6,7 @@ from typing import List, Tuple, Optional, Union
 import sys
 import os
 
-# Add the project root to the path to import from simulators
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
-from simulators.othello import OthelloGame
+from boardGPT.simulators.othello import OthelloGame
 
 # Function to detect if code is running in Jupyter notebook
 def is_jupyter() -> bool:
