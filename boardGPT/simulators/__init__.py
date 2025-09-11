@@ -1,0 +1,3 @@
+"""
+Simulators for board games.
+"""
