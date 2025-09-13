@@ -11,6 +11,8 @@ import seaborn as sns
 
 
 from boardGPT.simulators.othello import OthelloGame
+from boardGPT.simulators import create_id_to_move_mapping
+import random
 
 # Function to detect if code is running in Jupyter notebook
 def is_jupyter() -> bool:
@@ -618,3 +620,122 @@ def plot_heads_attention(qk_matrix, tokens, layer_idx=0):
     plt.tight_layout()
     plt.show()
 # end def plot_heads_attention
+
+
+def show_linear_probe_samples(data, num_samples=3, random_seed=None):
+    """
+    Display random samples from the linear probe training data.
+    
+    This function visualizes the relationship between move sequences (x) and 
+    board representations (y) for random samples from the linear probe training data.
+    
+    Args:
+        data (Dict[int, Tuple[torch.Tensor, torch.LongTensor]]): Dictionary where keys are sequence lengths
+            and values are tuples of (x, y) where:
+            - x: tensor of move sequences (shape: [num_sequences, sequence_length])
+            - y: tensor of board representations (shape: [num_sequences, 64])
+        num_samples (int): Number of random samples to display (default: 3)
+        random_seed (int, optional): Random seed for reproducibility
+    
+    Returns:
+        Union[plt.Figure, None]: In Jupyter notebooks, returns the figure object for inline display.
+                                In regular Python scripts, returns None after displaying the figure.
+    """
+    if random_seed is not None:
+        random.seed(random_seed)
+    
+    # Get the mapping from move IDs to move notations
+    id_to_move = create_id_to_move_mapping()
+    
+    # Create a figure with subplots for each sample
+    fig = plt.figure(figsize=(15, 5 * num_samples))
+    
+    # Get all available sequence lengths
+    lengths = list(data.keys())
+    
+    # Counter for subplot positioning
+    subplot_idx = 1
+    
+    # For each sample
+    for i in range(num_samples):
+        # Randomly select a sequence length
+        length_idx = random.randint(0, len(lengths) - 1)
+        length = lengths[length_idx]
+        
+        # Get the data for this length
+        x, y = data[length]
+        
+        # Randomly select a sample from this length
+        sample_idx = random.randint(0, x.shape[0] - 1)
+        
+        # Get the move sequence and board representation for this sample
+        move_sequence = x[sample_idx].cpu().numpy()
+        board_repr = y[sample_idx].cpu().numpy()
+        
+        # Convert move IDs to move notations
+        move_notations = [id_to_move[move_id.item()] for move_id in x[sample_idx] if move_id.item() != 0]
+        
+        # Create subplot for the move sequence
+        ax1 = fig.add_subplot(num_samples, 2, subplot_idx)
+        subplot_idx += 1
+        
+        # Display the move sequence
+        ax1.axis('off')
+        ax1.set_title(f"Sample {i+1}: Move Sequence (length {length})")
+        
+        # Format the move sequence as a readable string
+        move_text = "Moves: " + " → ".join(move_notations)
+        ax1.text(0.5, 0.5, move_text, ha='center', va='center', wrap=True, fontsize=12)
+        
+        # Create subplot for the board representation
+        ax2 = fig.add_subplot(num_samples, 2, subplot_idx)
+        subplot_idx += 1
+        
+        # Display the board representation as a visual board
+        ax2.set_title(f"Sample {i+1}: Board Representation")
+        
+        # Draw the green background
+        ax2.add_patch(plt.Rectangle((0, 0), 8, 8, color='green'))
+        
+        # Draw the grid lines
+        for j in range(9):
+            ax2.plot([j, j], [0, 8], 'k-', lw=1)
+            ax2.plot([0, 8], [j, j], 'k-', lw=1)
+        
+        # Draw the pieces based on the board representation
+        for row in range(8):
+            for col in range(8):
+                # Calculate the index in the 1D board representation
+                # The board representation is ordered by columns then rows (a1, a2, ..., h8)
+                idx = col * 8 + row
+                
+                piece = board_repr[idx]
+                
+                if piece == 1:  # White
+                    ax2.add_patch(plt.Circle((col + 0.5, row + 0.5), 0.4, color='white'))
+                elif piece == 2:  # Black
+                    ax2.add_patch(plt.Circle((col + 0.5, row + 0.5), 0.4, color='black'))
+        
+        # Add column and row labels
+        ax2.set_xticks([i + 0.5 for i in range(8)])
+        ax2.set_yticks([i + 0.5 for i in range(8)])
+        ax2.set_xticklabels(['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'])
+        ax2.set_yticklabels(['1', '2', '3', '4', '5', '6', '7', '8'])
+        
+        # Set limits and aspect
+        ax2.set_xlim(0, 8)
+        ax2.set_ylim(0, 8)
+        ax2.set_aspect('equal')
+    
+    # Apply tight layout to the figure
+    plt.tight_layout()
+    
+    # Check if running in Jupyter notebook
+    if is_jupyter():
+        # In Jupyter, return the figure for inline display
+        return fig
+    else:
+        # In regular Python scripts, show the figure and return None
+        plt.show()
+        return None
+# end def show_linear_probe_samples

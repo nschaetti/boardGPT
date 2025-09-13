@@ -1,8 +1,11 @@
+
+
+# Imports
 import sys
 import os
 from typing import List, Tuple, Optional
-
 from boardGPT.simulators.othello import OthelloGame
+
 
 def verify_game(moves: List[str]) -> Tuple[bool, List[str]]:
     """
