@@ -23,19 +23,25 @@ $ python train_linear_probe.py --model_file=/path/to/model.safetensors --model_c
 Use a configuration file:
 $ python train_linear_probe.py --config=/path/to/config.yaml
 """
-
+import random
 # Imports
 from typing import Dict, List, Optional, Tuple
 import os
 import pickle
 import glob
+
+import numpy as np
 import torch
 import yaml
-import argparse
-import random
 import time
-import math
+import argparse
 from contextlib import nullcontext
+from rich.console import Console
+from rich import traceback
+
+# Initialize Rich console and traceback
+console = Console()
+traceback.install()
 
 from boardGPT.utils import load_safetensors
 from boardGPT.models import GPTConfig, GPT
@@ -51,15 +57,20 @@ def parse_args():
         argparse.Namespace: Parsed command line arguments
     """
     parser = argparse.ArgumentParser(description='Train a linear probe for a GPT model')
-    parser.add_argument('--model_file', type=str, required=True, help='Path to the model safetensors file')
+    parser.add_argument('--model-file', type=str, required=True, help='Path to the model safetensors file')
+
     parser.add_argument(
-        '--model_config_file', type=str, required=True, help='Path to the model configuration JSON file'
+        '--model-config-file', type=str, required=True, help='Path to the model configuration JSON file'
     )
-    parser.add_argument('--config', type=str, required=True, help='Path to the YAML configuration file')
-    parser.add_argument('--ckpt', type=str, default=None,
-                        help='Path to a checkpoint file (.pt) to load weights from. If not specified, a new model will be initialized from scratch.')
-    parser.add_argument('--num-iter', type=int, default=None,
-                        help='Iteration number to start from when resuming from a checkpoint. Used with --ckpt.')
+
+    parser.add_argument(
+        '--config', type=str, required=True, help='Path to the YAML configuration file'
+    )
+
+    parser.add_argument(
+        '--data-dir', type=str, required=True,
+        help='Path to the directory containing training and validation data'
+    )
     return parser.parse_args()
 # end def parse_args
 
@@ -78,13 +89,13 @@ def load_config(config_path):
         with open(config_path, 'r') as f:
             config = yaml.safe_load(f)
         # end with
-        print(f"Loaded configuration from {config_path}")
+        console.print(f"Loaded configuration from [bold]{config_path}[/bold]")
         return config
     except FileNotFoundError:
-        print(f"Configuration file {config_path} not found. Using default configuration.")
+        console.print(f"[yellow]Configuration file {config_path} not found. Using default configuration.[/yellow]")
         return {}
     except yaml.YAMLError as e:
-        print(f"Error parsing YAML configuration file: {e}")
+        console.print(f"[bold red]Error parsing YAML configuration file:[/bold red] {e}")
         return {}
     # end try
 # end def load_config
@@ -120,6 +131,7 @@ _val_data: Optional[List[List[int]]] = None
 
 
 def load_game_sequences(
+        data_dir: str,
         split: str,
         config: Dict
 ) -> List[List[int]]:
@@ -127,49 +139,65 @@ def load_game_sequences(
     Load data from the specified split.
 
     Args:
+        data_dir (str): Path to the data directory
         split (str): Split to load
         config (Dict): Configuration dictionary
     """
     global _train_data, _val_data
 
-    print(f"Loading {split} data into memory...")
+    # Load all data into memory if not already loaded
+    if (split == 'train' and _train_data is None) or (split == 'val' and _val_data is None):
+        console.print(f"Loading [bold cyan]{split}[/bold cyan] data into memory...")
 
-    # Data dir for the specified split (train or val)
-    data_dir = os.path.join(config['data_dir'], split)
+        # Data dir for the specified split (train or val)
+        data_dir = os.path.join(data_dir, split)
 
-    # Pattern for bin files
-    pattern = "*.bin"
+        # Pattern for bin files
+        pattern = "*.bin"
 
-    # Find all matching bin files
-    bin_files = glob.glob(os.path.join(data_dir, pattern))
+        # Find all matching bin files
+        bin_files = glob.glob(os.path.join(data_dir, pattern))
 
-    if not bin_files:
-        # If no bin files found in the specified directory, print an error message
-        print(
-            f"Error: No bin files found in {data_dir}. Make sure the data directory contains "
-            f"'train' and 'val' folders with bin files."
-        )
+        if not bin_files:
+            # If no bin files found in the specified directory, print an error message
+            console.print(
+                f"[bold red]Error:[/bold red] No bin files found in {data_dir}. Make sure the data directory contains "
+                f"'train' and 'val' folders with bin files."
+            )
 
-        # Fallback to old method if no matching files found
-        fallback_data_dir = os.path.join("data", config['board_game'])
-        data_filename = config['train_data_filename'] if split == 'train' else config['val_data_filename']
+            # Fallback to old method if no matching files found
+            fallback_data_dir = os.path.join("data", config['board_game'])
+            data_filename = config['train_data_filename'] if split == 'train' else config['val_data_filename']
 
-        print(f"Falling back to {os.path.join(fallback_data_dir, data_filename)}")
+            console.print(f"Falling back to [yellow]{os.path.join(fallback_data_dir, data_filename)}[/yellow]")
 
-        with open(os.path.join(fallback_data_dir, data_filename), 'rb') as f:
-            game_sequences: List[List[int]] = pickle.load(f)
-        # end with
-    else:
-        # Load all bin files and combine their data
-        print(f"Found {len(bin_files)} bin files for {split} split")
-        game_sequences: List[List[int]] = []
-        for bin_file in bin_files:
-            print(f"Loading {bin_file}...")
-            with open(bin_file, 'rb') as f:
-                sequences = pickle.load(f)
-                game_sequences.extend(sequences)
+            with open(os.path.join(fallback_data_dir, data_filename), 'rb') as f:
+                game_sequences: List[List[int]] = pickle.load(f)
             # end with
-        # end for
+        else:
+            # Load all bin files and combine their data
+            console.print(f"Found [bold green]{len(bin_files)}[/bold green] bin files for [bold cyan]{split}[/bold cyan] split")
+            game_sequences: List[List[int]] = []
+            for bin_file in bin_files:
+                console.print(f"Loading [blue]{bin_file}[/blue]...")
+                with open(bin_file, 'rb') as f:
+                    sequences = pickle.load(f)
+                    game_sequences.extend(sequences)
+                # end with
+            # end for
+        # end if
+
+        # Concatenate game sequences
+        print(f"Total sequences for {split}: {len(game_sequences)}")
+
+        # Store in the appropriate global variable
+        if split == 'train':
+            _train_data = game_sequences
+            print(f"Train data loaded into memory")
+        else:
+            _val_data = game_sequences
+            print(f"Validation data loaded into memory")
+        # end if
     # end if
 
     # Get the appropriate data based on the split
@@ -213,20 +241,37 @@ def get_boards(
 def get_partial_games(
         game_sequences: List[List[int]],
         length: int,
-) -> List[List[int]]:
+        min_seq_number: int,
+        sequence_lengths: Optional[List[int]] = None
+) -> Optional[List[np.array]]:
     """
     Get partial game from a list of game sequences with length equal or above length.
 
     Args:
         game_sequences (List[List[int]]): List of game sequences with same length
         length (int): Length of the partial game
+        min_seq_number (int): Batch size
+        sequence_lengths (Optional[List[int]]): Precomputed lengths of all sequences in game_sequences
 
     Return:
         List[List[int]]: List of partial games with same length
     """
-    return [
-        sequence[:length] for sequence in game_sequences if len(sequence) >= length
-    ]
+    if sequence_lengths is not None:
+        # Use precomputed lengths to directly get sequences of required length
+        indices = [i for i, seq_len in enumerate(sequence_lengths) if seq_len >= length]
+        len_seq = [np.array(game_sequences[i]) for i in indices]
+    else:
+        # Fallback to original implementation
+        len_seq = [np.array(seq) for seq in game_sequences if len(seq) >= length]
+    # end if
+
+    if len(len_seq) >= min_seq_number:
+        return [
+            sequence[:length] for sequence in len_seq
+        ]
+    else:
+        return None
+    # end if
 # end def get_partial_games
 
 
@@ -267,14 +312,14 @@ def save_checkpoint(
     if linear_probe is not None:
         checkpoint['linear_probe'] = linear_probe.state_dict()
     
-    print(f"Saving checkpoint to {config['out_dir']}")
+    console.print(f"Saving checkpoint to [bold blue]{config['out_dir']}[/bold blue]")
     # Save with standard name for backward compatibility
     torch.save(checkpoint, os.path.join(config['out_dir'], 'linear_probe_ckpt.pt'))
     
     # Save with iteration number in filename
     iter_filename = f'linear_probe_ckpt_iter{iter_num}.pt'
     torch.save(checkpoint, os.path.join(config['out_dir'], iter_filename))
-    print(f"Also saved checkpoint as {iter_filename}")
+    console.print(f"Also saved checkpoint as [bold green]{iter_filename}[/bold green]")
 # end save_checkpoint
 
 
@@ -290,19 +335,16 @@ def load_checkpoint(ckpt_path, device, linear_probe=None):
     Returns:
         tuple: Contains checkpoint data including optimizer state, iteration number, etc.
     """
-    print(f"Loading checkpoint from {ckpt_path}")
+    console.print(f"Loading checkpoint from [bold blue]{ckpt_path}[/bold blue]")
     checkpoint = torch.load(ckpt_path, map_location=device)
     
     # Load linear probe if provided
     if linear_probe is not None and 'linear_probe' in checkpoint:
         linear_probe.load_state_dict(checkpoint['linear_probe'])
-        print("Loaded linear probe weights from checkpoint")
+        console.print("[bold green]Loaded linear probe weights from checkpoint[/bold green]")
     
     return checkpoint
 # end load_checkpoint
-
-
-MAX_GAME_LENGTH = 60
 
 
 @torch.no_grad()
@@ -321,7 +363,7 @@ def evaluate_linear_probe(model, linear_probe, data, ctx, config, device):
     Returns:
         dict: Contains metrics like average loss and accuracy
     """
-    print("Evaluating linear probe...")
+    console.print("[bold]Evaluating linear probe...[/bold]")
     model.eval()
     linear_probe.eval()
     
@@ -386,7 +428,7 @@ def evaluate_linear_probe(model, linear_probe, data, ctx, config, device):
     accuracy = total_correct / total_samples if total_samples > 0 else 0
     
     # Print metrics
-    print(f"Evaluation - Loss: {avg_loss:.4f}, Accuracy: {accuracy:.4f}")
+    console.print(f"Evaluation - [bold]Loss:[/bold] [red]{avg_loss:.4f}[/red], [bold]Accuracy:[/bold] [green]{accuracy:.4f}[/green]")
     
     model.train()
     linear_probe.train()
@@ -398,30 +440,76 @@ def evaluate_linear_probe(model, linear_probe, data, ctx, config, device):
 # end evaluate_linear_probe
 
 
+MAX_GAME_LENGTH = 60
+
+
 def setup_data(
+        data_dir: str,
         split: str,
-        config: Dict
+        config: Dict,
+        max_game_sequences: int
 ) -> Dict[int, Tuple[torch.Tensor, torch.LongTensor]]:
     """
     Setup data for linear probe training.
 
     Args:
+        data_dir: Path to the data directory
         split (str): Split from which to extract data.
         config (Dict): Configuration dictionary.
+        max_game_sequences (int): Maximum number of game sequences to load per length
     """
+    # Check if pickle file exists
+    pickle_filename = f"{split}_linear_probe_data.pkl"
+    pickle_path = os.path.join(data_dir, pickle_filename)
+    
+    # If pickle file exists, load it and return
+    if os.path.exists(pickle_path):
+        console.print(f"Loading {split} data from pickle file: {pickle_path}")
+        try:
+            with open(pickle_path, 'rb') as f:
+                data = pickle.load(f)
+            # end with
+            return data
+        except Exception as e:
+            console.print(f"[bold red]Error loading pickle file:[/bold red] {e}")
+            console.print("Falling back to processing data from scratch...")
+        # end try
+    # end if
+    
+    # If no pickle file or error loading, process data from scratch
     # Load game sequences
-    game_sequences: List[List[int]] = load_game_sequences(split, config)
+    game_sequences: List[List[int]] = load_game_sequences(
+        data_dir=data_dir,
+        split=split,
+        config=config
+    )
+
+    # Precompute the length of all sequences in game_sequences
+    console.print("Precomputing sequence lengths...")
+    sequence_lengths: List[int] = [len(seq) for seq in game_sequences]
+    console.print(f"Precomputed lengths for {len(sequence_lengths)} sequences")
 
     # Final data
     data: Dict[int, Tuple[torch.Tensor, torch.LongTensor]] = {}
 
     # For each length
-    for length in range(MAX_GAME_LENGTH):
+    for length in range(2, MAX_GAME_LENGTH):
+        console.print(f"Looking at {length} game sequences...")
+
         # Get partial game sequences by length
-        partial_sequences: List[List[int]] = get_partial_games(
+        partial_sequences: Optional[List[np.array]] = get_partial_games(
             game_sequences=game_sequences,
-            length=length
+            length=length,
+            min_seq_number=config['batch_size'],
+            sequence_lengths=sequence_lengths
         )
+
+        # If longer, then select randomly
+        if len(partial_sequences) > max_game_sequences:
+            # Random ix
+            ix = random.sample(range(0, len(partial_sequences) + 1), max_game_sequences)
+            partial_sequences = [partial_sequences[i] for i in ix]
+        # end if
 
         # Get y by converting sequences to board representations
         y: torch.LongTensor = get_boards(partial_sequences)
@@ -429,12 +517,57 @@ def setup_data(
         # Select subsequences
         x: torch.Tensor = torch.stack([torch.tensor(seq, dtype=torch.long) for seq in partial_sequences])
 
+        # Load
+        console.print(f"Found {len(partial_sequences)} sequences in {length} games!")
+
         # Add to data
         data[length] = (x, y)
     # end for length
 
     return data
 # end def setup_data
+
+
+def setup_model(
+        model_file: str,
+        model_config_file: str,
+        device: torch.device,
+):
+    # Load the model
+    model, _ = load_safetensors(
+        model_file,
+        model_config_file
+    )
+    model = model.to(device)
+
+    # Initialize linear probe
+    n_embd = model.config.n_embd
+    linear_probe = torch.nn.Linear(n_embd, 64 * 3)  # 64 cells, 3 states per cell
+    linear_probe = linear_probe.to(device)
+
+    return model, linear_probe
+# end def setup_model
+
+
+def save_probe_data(
+        data_dir: str,
+        split: str,
+        data
+):
+    # Save training data to pickle file
+    pickle_path = os.path.join(data_dir, f"{split}_linear_probe_data.pkl")
+    console.print(f"Saving training data to pickle file: {pickle_path}")
+    try:
+        # Ensure the directory exists
+        os.makedirs(os.path.dirname(pickle_path), exist_ok=True)
+        with open(pickle_path, 'wb') as f:
+            pickle.dump(data, f)
+        # end with
+        console.print("[bold green]Training data saved successfully![/bold green]")
+    except Exception as e:
+        console.print(f"[bold red]Error saving training data:[/bold red] {e}")
+    # end try
+# end def save_probe_data
 
 
 def main():
@@ -457,15 +590,13 @@ def main():
     
     # Create context manager for mixed precision training
     ctx = nullcontext() if device_type == 'cpu' else torch.amp.autocast(device_type=device_type, dtype=ptdtype)
-    
-    # Load the model
-    model = load_safetensors(args.model_file, args.model_config_file)
-    model = model.to(device)
-    
-    # Initialize linear probe
-    n_embd = model.config.n_embd
-    linear_probe = torch.nn.Linear(n_embd, 64 * 3)  # 64 cells, 3 states per cell
-    linear_probe = linear_probe.to(device)
+
+    # Setup models
+    model, linear_probe = setup_model(
+        model_file=args.model_file,
+        model_config_file=args.model_config_file,
+        device=device,
+    )
     
     # Initialize optimizer
     optimizer, scaler = initialize_optimizer(
@@ -482,68 +613,62 @@ def main():
     iter_num = 0
     best_val_loss = float('inf')
     
-    # Load checkpoint if provided
-    if args.ckpt is not None:
-        checkpoint = load_checkpoint(args.ckpt, device, linear_probe)
-        
-        # Set iteration number - use command line value if provided, otherwise use checkpoint value
-        if args.num_iter is not None:
-            iter_num = args.num_iter
-            print(f"Starting from iteration {iter_num} as specified by --num-iter")
-        else:
-            iter_num = checkpoint['iter_num']
-            print(f"Resuming from iteration {iter_num} from checkpoint")
-        
-        # Load optimizer state
-        optimizer.load_state_dict(checkpoint['optimizer'])
-        
-        # Load best validation loss
-        best_val_loss = checkpoint['best_val_loss']
-        print(f"Best validation loss from checkpoint: {best_val_loss:.4f}")
-    
     # Load training and validation data
-    print("Loading training data...")
+    console.print("Loading training data...")
     train_data = setup_data(
+        data_dir=args.data_dir,
         split='train',
-        config=config
+        config=config,
+        max_game_sequences=config['max_game_sequences'],
     )
     
-    print("Loading validation data...")
+    # Save training data to pickle file
+    save_probe_data(args.data_dir, split='train', data=train_data)
+
+    console.print("Loading validation data...")
     val_data = setup_data(
+        data_dir=args.data_dir,
         split='val',
-        config=config
+        config=config,
+        max_game_sequences=config['max_game_sequences'],
     )
-    
+
+    # Save training data to pickle file
+    save_probe_data(args.data_dir, split='val', data=val_data)
+
     # Display random samples to verify board representation matches move sequences
     if config.get('show_samples', True):
-        print("Displaying random samples to verify board representation matches move sequences...")
+        console.print("Displaying random samples to verify board representation matches move sequences...")
         show_linear_probe_samples(train_data, num_samples=3)
-    
+    # end if
+
     # Set models to training mode
     model.eval()  # Base model stays in eval mode
     linear_probe.train()
-    
+
     # Training loop
-    print(f"Beginning training from iteration {iter_num}")
+    console.print(f"Beginning training from iteration {iter_num}")
     t0 = time.time()
-    
+
     # Main training loop
     while iter_num < config.get('max_iters', 10000):
         # Sample a random game length for this iteration
         length = random.randint(0, MAX_GAME_LENGTH - 1)
-        
+
         # Skip if no data for this length
         if length not in train_data:
             continue
-        
+        # end if length
+
         # Get batch for this length
         x, y = train_data[length]
-        
+
         # Move data to device if not already there
         if x.device != device:
             x = x.to(device)
             y = y.to(device)
-        
+        # end if
+
         # Forward pass with gradient computation
         with ctx:
             # Get model residuals from the last layer (no gradient computation for the base model)
@@ -551,33 +676,35 @@ def main():
                 # Request residuals from the last layer (n_layer - 1)
                 last_layer = model.config.n_layer - 1
                 residuals_key = f"residuals{last_layer}"
-                
+
                 # Forward pass with to_return parameter to get residuals
                 # Only request residuals, not logits or loss since we don't need them
                 outputs = model(x, to_return=[residuals_key])
-                
+
                 # Get residuals from the outputs (first element since it's the first in to_return)
                 residuals = outputs[0]  # Shape: [batch_size, seq_len, n_embd]
-            
+            # end with
+
             # Reshape for linear probe
             batch_size, seq_len, n_embd = residuals.shape
             residuals = residuals.reshape(-1, n_embd)  # Shape: [batch_size*seq_len, n_embd]
-            
+
             # Forward pass through linear probe
             logits = linear_probe(residuals)  # Shape: [batch_size*seq_len, 64*3]
-            
+
             # Reshape logits and targets for loss calculation
             logits = logits.view(batch_size, seq_len, 64, 3)  # Shape: [batch_size, seq_len, 64, 3]
-            
+
             # Calculate loss (cross entropy for each cell)
             loss = torch.nn.functional.cross_entropy(
                 logits.reshape(-1, 3),  # Shape: [batch_size*seq_len*64, 3]
                 y.reshape(-1)           # Shape: [batch_size*seq_len*64]
             )
-        
+        # end with ctx
+
         # Backward pass and optimization
         optimizer.zero_grad(set_to_none=True)
-        
+
         if dtype == 'float16':
             # Use gradient scaling for float16
             scaler.scale(loss).backward()
@@ -587,7 +714,8 @@ def main():
             # Regular backward pass for float32
             loss.backward()
             optimizer.step()
-        
+        # end if
+
         # Logging
         if iter_num % config.get('log_interval', 10) == 0:
             # Calculate accuracy
@@ -595,23 +723,25 @@ def main():
                 pred = logits.argmax(dim=-1)  # Shape: [batch_size, seq_len, 64]
                 correct = (pred == y).float().sum().item()
                 accuracy = correct / (batch_size * seq_len * 64)
-            
+            # end with no_grad
+
             # Calculate time per iteration
             t1 = time.time()
             dt = t1 - t0
             t0 = t1
-            
+
             # Print metrics
             print(f"iter {iter_num}: loss {loss.item():.4f}, accuracy {accuracy:.4f}, time {dt*1000:.2f}ms, length {length}")
-        
+        # end if
+
         # Evaluation
         if iter_num % config.get('eval_interval', 500) == 0:
             metrics = evaluate_linear_probe(model, linear_probe, val_data, ctx, config, device)
             val_loss = metrics['loss']
             val_accuracy = metrics['accuracy']
-            
+
             print(f"Evaluation at iter {iter_num}: val_loss {val_loss:.4f}, val_accuracy {val_accuracy:.4f}")
-            
+
             # Save checkpoint if validation loss improved
             if val_loss < best_val_loss or config.get('always_save_checkpoint', False):
                 best_val_loss = val_loss
@@ -623,21 +753,25 @@ def main():
                     config=config,
                     linear_probe=linear_probe
                 )
-        
+            # end if
+        # end if
+
         # Increment iteration counter
         iter_num += 1
-        
+
         # Exit if max iterations reached
         if iter_num >= config.get('max_iters', 10000):
             break
-    
+        # end if
+    # end while iter
+
     # Final evaluation
     metrics = evaluate_linear_probe(model, linear_probe, val_data, ctx, config, device)
     val_loss = metrics['loss']
     val_accuracy = metrics['accuracy']
-    
+
     print(f"Final evaluation: val_loss {val_loss:.4f}, val_accuracy {val_accuracy:.4f}")
-    
+
     # Save final checkpoint
     save_checkpoint(
         model=model,
@@ -647,7 +781,7 @@ def main():
         config=config,
         linear_probe=linear_probe
     )
-    
+
     print("Training complete!")
 # end def main
 

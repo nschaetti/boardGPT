@@ -1,4 +1,5 @@
 
+from typing import Union, Tuple
 import json
 from safetensors.torch import safe_open
 from boardGPT.models import GPT, GPTConfig
@@ -7,7 +8,7 @@ from boardGPT.models import GPT, GPTConfig
 def load_safetensors(
         path: str,
         config_path: str = None
-):
+) -> Tuple[GPT, GPTConfig]:
     """
     Load a model from a safe tensor file.
 
@@ -38,6 +39,6 @@ def load_safetensors(
     # Load the weights from the safetensors file
     model.load_safetensors(path)
     
-    return model
+    return model, model_args
 # end load_safetensors
 

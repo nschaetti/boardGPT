@@ -126,7 +126,7 @@ def game_to_board(moves: List[str]) -> List[int]:
         for row in range(game.SIZE):
             # Position
             pos = f"{col}{row+1}"
-            print(f"pos: {pos}")
+
             # Get the coordinate
             r, c = game.notation_to_coords(pos)
 

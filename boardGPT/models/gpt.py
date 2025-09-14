@@ -470,6 +470,7 @@ class GPT(nn.Module):
             raise ImportError(
                 "Could not import safetensors. Please install safetensors with: pip install safetensors"
             )
+        # end try
 
         print(f"Loading weights from safetensors file: {filepath}")
 
@@ -487,8 +488,11 @@ class GPT(nn.Module):
 
         if missing_keys:
             print(f"Warning: Missing keys in safetensors file: {missing_keys}")
+        # end if
+
         if unexpected_keys:
             print(f"Warning: Unexpected keys in safetensors file: {unexpected_keys}")
+        # end if
 
         # Load weights for matching keys
         for key in model_keys.intersection(file_keys):
@@ -496,7 +500,9 @@ class GPT(nn.Module):
                 print(
                     f"Warning: Shape mismatch for {key}. Expected {model_state_dict[key].shape}, got {state_dict[key].shape}")
                 continue
+            # end if
             model_state_dict[key].copy_(state_dict[key])
+        # end for
 
         # Load the state dict into the model
         self.load_state_dict(model_state_dict)

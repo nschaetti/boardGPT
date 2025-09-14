@@ -15,8 +15,8 @@ wandb_run_name: 'synthetic-othello-run1'          # Run name for wandb
 
 # Data settings
 board_game: "othello"
-gradient_accumulation_steps: 2        # Used to simulate larger batch sizes (5 * 8)
-batch_size: 768                         # If gradient_accumulation_steps > 1, this is the micro-batch size
+gradient_accumulation_steps: 1        # Used to simulate larger batch sizes (5 * 8)
+batch_size: 1024                         # If gradient_accumulation_steps > 1, this is the micro-batch size
 block_size: 61                         # Context size for the model
 
 # Model architecture settings
@@ -28,8 +28,8 @@ dropout: 0.0                    # Dropout rate (0 for pretraining, try 0.1+ for 
 bias: false                     # Whether to use bias in LayerNorm and Linear layers
 
 # Optimizer settings (AdamW)
-learning_rate: 6.0e-4           # Maximum learning rate
-max_iters: 120000               # Total number of training iterations
+learning_rate: 1.0e-4           # Maximum learning rate
+max_iters: 180000               # Total number of training iterations
 weight_decay: 1.0e-1            # Weight decay coefficient
 beta1: 0.9                      # AdamW beta1 parameter
 beta2: 0.95                     # AdamW beta2 parameter
@@ -38,8 +38,8 @@ grad_clip: 1.0                  # Clip gradients at this value (disable if == 0.
 # Learning rate decay settings
 decay_lr: true                  # Whether to decay the learning rate
 warmup_iters: 2000              # Number of warmup steps
-lr_decay_iters: 70000          # Should be ~= max_iters per Chinchilla
-min_lr: 6.0e-5                  # Minimum learning rate (~= learning_rate/10 per Chinchilla)
+lr_decay_iters: 130000          # Should be ~= max_iters per Chinchilla
+min_lr: 1.0e-5                  # Minimum learning rate (~= learning_rate/10 per Chinchilla)
 
 # DDP settings
 backend: 'nccl'                 # Backend for distributed training ('nccl', 'gloo', etc.)
