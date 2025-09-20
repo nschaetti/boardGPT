@@ -46,7 +46,7 @@ traceback.install()
 from boardGPT.utils import load_safetensors
 from boardGPT.models import GPTConfig, GPT
 from boardGPT.utils import game_to_board, show_linear_probe_samples
-from boardGPT.simulators import create_id_to_move_mapping
+from boardGPT.games import create_id_to_move_mapping
 
 
 def parse_args():

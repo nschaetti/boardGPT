@@ -10,7 +10,7 @@ import os
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from boardGPT.validation.metrics import is_valid_game_sequence
-from boardGPT.simulators.othello import OthelloGame
+from boardGPT.games.othello import OthelloGame
 
 def debug_sequence(sequence):
     """

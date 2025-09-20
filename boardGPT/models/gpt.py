@@ -1,4 +1,21 @@
 """
+Copyright (C) 2025 boardGPT Contributors
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program.  If not, see <https://www.gnu.org/licenses/>.
+"""
+
+"""
 Full definition of a GPT Language Model, all of it in this single file.
 
 This module implements a complete GPT (Generative Pre-trained Transformer) model
@@ -53,7 +70,7 @@ class GPTConfig:
     dropout: float = 0.0
     bias: bool = True  # True: bias in Linears and LayerNorms, like GPT-2. False: a bit better and faster
 
-
+# end class GPTConfig
 # end class GPTConfig
 
 class GPT(nn.Module):
@@ -72,7 +89,7 @@ class GPT(nn.Module):
     def __init__(
             self,
             config: GPTConfig,
-            use_flash: bool = True
+            use_flash: bool = True  # end def __init__
     ):
         """
         Initialize the GPT model.
@@ -117,7 +134,7 @@ class GPT(nn.Module):
         # Apply special scaled init to the residual projections, per GPT-2 paper
         for pn, p in self.named_parameters():
             if pn.endswith('c_proj.weight'):
-                torch.nn.init.normal_(p, mean=0.0, std=0.02 / math.sqrt(2 * config.n_layer))
+                torch.nn.init.normal_(p, mean=0.0, std=0.02 / math.sqrt(2 * config.n_layer))  # end if
             # end if
         # end for
     # end __init__
@@ -130,7 +147,7 @@ class GPT(nn.Module):
             use_flash (bool): Whether to activate flash layers.
         """
         for block_i in range(self.config.n_layer):
-            self.transformer['h'][block_i].attn.flash = use_flash
+            self.transformer['h'][block_i].attn.flash = use_flash  # end for
         # end for
     # end set_flash
 
@@ -150,9 +167,9 @@ class GPT(nn.Module):
         """
         n_params = sum(p.numel() for p in self.parameters())
         if non_embedding:
-            n_params -= self.transformer.wpe.weight.numel()
+            n_params -= self.transformer.wpe.weight.numel()  # end if
         # end if
-        return n_params
+        return n_params  # end def get_num_params
     # end def get_num_params
 
     def _init_weights(self, module):
@@ -168,10 +185,10 @@ class GPT(nn.Module):
         if isinstance(module, nn.Linear):
             torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
             if module.bias is not None:
-                torch.nn.init.zeros_(module.bias)
+                torch.nn.init.zeros_(module.bias)  # end if
             # end if
         elif isinstance(module, nn.Embedding):
-            torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
+            torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)  # end elif
         # end if
     # end def _init_weights
 
@@ -180,7 +197,7 @@ class GPT(nn.Module):
             idx: torch.LongTensor,
             targets: torch.Tensor = None,
             recorder: ActivationRecorder = None,
-            to_return: Optional[List[str]] = None,
+            to_return: Optional[List[str]] = None,  # end def forward
     ):
         """
         Forward pass through the model.
@@ -217,14 +234,14 @@ class GPT(nn.Module):
         tok_emb = self.transformer.wte(idx)  # token embeddings of shape (b, t, n_embd)
         tok_emb = self.token_emb_hook(tok_emb)
         if recorder is not None:
-            recorder.save(f"gpt.tok_emb", tok_emb)
+            recorder.save(f"gpt.tok_emb", tok_emb)  # end if
         # end if
 
         # pos_emb is (b, t, 512)
         pos_emb = self.transformer.wpe(pos)  # position embeddings of shape (t, n_embd)
         pos_emb = self.pos_emb_hook(pos_emb)
         if recorder is not None:
-            recorder.save(f"gpt.pos_emb", pos_emb)
+            recorder.save(f"gpt.pos_emb", pos_emb)  # end if
         # end if
 
         # x is (b, t, 512)
@@ -232,7 +249,7 @@ class GPT(nn.Module):
 
         # Keep initial residuals
         if recorder is not None:
-            recorder.save(f"gpt.residuals", x)
+            recorder.save(f"gpt.residuals", x)  # end if
         # end if
 
         # Process through transformer blocks
@@ -247,7 +264,7 @@ class GPT(nn.Module):
 
             # Return residuals
             if f"residuals{block_i}" in to_return:
-                obj_to_return.append(x)
+                obj_to_return.append(x)  # end if
             # end if
         # end for
 
@@ -259,12 +276,12 @@ class GPT(nn.Module):
         if targets is not None:
             # If we are given some desired targets also calculate the loss
             logits = self.lm_head(x)
-            loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1), ignore_index=-1)
+            loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1), ignore_index=-1)  # end if
         else:
             # Inference-time mini-optimization: only forward the lm_head on the very last position
             # output is (b, 1, voc_size)
             logits = self.lm_head(x[:, [-1], :])  # note: using list [-1] to preserve the time dim
-            loss = None
+            loss = None  # end else
         # end if
 
         # Add
@@ -292,7 +309,7 @@ class GPT(nn.Module):
         self.transformer.wpe.weight = nn.Parameter(self.transformer.wpe.weight[:block_size])
         for block in self.transformer.h:
             if hasattr(block.attn, 'bias'):
-                block.attn.bias = block.attn.bias[:, :, :block_size, :block_size]
+                block.attn.bias = block.attn.bias[:, :, :block_size, :block_size]  # end if
             # end if
         # end for
     # end crop_block_size
@@ -335,7 +352,7 @@ class GPT(nn.Module):
         # We can override the dropout rate, if desired
         if 'dropout' in override_args:
             print(f"overriding dropout rate to {override_args['dropout']}")
-            config_args['dropout'] = override_args['dropout']
+            config_args['dropout'] = override_args['dropout']  # end if
         # end if
 
         # Create a from-scratch initialized minGPT model
@@ -363,17 +380,17 @@ class GPT(nn.Module):
                 # Special treatment for the Conv1D weights we need to transpose
                 assert sd_hf[k].shape[::-1] == sd[k].shape
                 with torch.no_grad():
-                    sd[k].copy_(sd_hf[k].t())
+                    sd[k].copy_(sd_hf[k].t())  # end with  # end if
             else:
                 # Vanilla copy over the other parameters
                 assert sd_hf[k].shape == sd[k].shape
                 with torch.no_grad():
-                    sd[k].copy_(sd_hf[k])
+                    sd[k].copy_(sd_hf[k])  # end with  # end else
             # end if
         # end for
 
         return model
-
+    # end def from_pretrained
     def configure_optimizers(self, weight_decay, learning_rate, betas, device_type):
         """
         Configure the optimizer for training.
@@ -417,7 +434,7 @@ class GPT(nn.Module):
         optimizer = torch.optim.AdamW(optim_groups, lr=learning_rate, betas=betas, **extra_args)
         print(f"using fused AdamW: {use_fused}")
 
-        return optimizer
+        return optimizer  # end def configure_optimizers
     # end def configure_optimizers
 
     def estimate_mfu(self, fwdbwd_per_iter, dt):
@@ -447,7 +464,7 @@ class GPT(nn.Module):
         flops_achieved = flops_per_iter * (1.0 / dt)  # per second
         flops_promised = 312e12  # A100 GPU bfloat16 peak flops is 312 TFLOPS
         mfu = flops_achieved / flops_promised
-        return mfu
+        return mfu  # end def estimate_mfu
     # end def estimate_mfu
 
     def load_safetensors(self, filepath):
@@ -465,11 +482,11 @@ class GPT(nn.Module):
             self: The model instance with loaded weights
         """
         try:
-            from safetensors.torch import load_file
+            from safetensors.torch import load_file  # end try
         except ImportError:
             raise ImportError(
                 "Could not import safetensors. Please install safetensors with: pip install safetensors"
-            )
+            )  # end except
         # end try
 
         print(f"Loading weights from safetensors file: {filepath}")
@@ -487,11 +504,11 @@ class GPT(nn.Module):
         unexpected_keys = file_keys - model_keys
 
         if missing_keys:
-            print(f"Warning: Missing keys in safetensors file: {missing_keys}")
+            print(f"Warning: Missing keys in safetensors file: {missing_keys}")  # end if
         # end if
 
         if unexpected_keys:
-            print(f"Warning: Unexpected keys in safetensors file: {unexpected_keys}")
+            print(f"Warning: Unexpected keys in safetensors file: {unexpected_keys}")  # end if
         # end if
 
         # Load weights for matching keys
@@ -499,16 +516,16 @@ class GPT(nn.Module):
             if model_state_dict[key].shape != state_dict[key].shape:
                 print(
                     f"Warning: Shape mismatch for {key}. Expected {model_state_dict[key].shape}, got {state_dict[key].shape}")
-                continue
+                continue  # end if
             # end if
-            model_state_dict[key].copy_(state_dict[key])
+            model_state_dict[key].copy_(state_dict[key])  # end for
         # end for
 
         # Load the state dict into the model
         self.load_state_dict(model_state_dict)
 
         print(f"Successfully loaded weights from {filepath}")
-        return self
+        return self  # end def load_safetensors
     # end def load_safetensors
 
     # Create a mapping from move notation to ID
@@ -534,7 +551,7 @@ class GPT(nn.Module):
             for row in range(8):  # 1-8
                 # Move not possible on the centered square
                 if (3 <= col <= 4) and (3 <= row <= 4):
-                    continue
+                    continue  # end if
                 # end if
                 notation = chr(97 + col) + str(row + 1)
                 move_to_id[notation] = id_counter
@@ -544,7 +561,7 @@ class GPT(nn.Module):
 
         id_to_move = {i:m for m, i in move_to_id.items()}
 
-        return move_to_id, id_to_move
+        return move_to_id, id_to_move  # end def create_move_mapping
     # end create_move_mapping
 
     @staticmethod
@@ -564,12 +581,12 @@ class GPT(nn.Module):
             return [
                 0,
                 *[move_to_id[m.lower()] for m in sequence],
-            ]
+            ]  # end if
         else:
             return [
                 move_to_id[m.lower()]
                 for m in sequence
-            ]
+            ]  # end else
         # end if
     # end def to_idx
 
@@ -588,7 +605,7 @@ class GPT(nn.Module):
         # Filter out BOS tokens (ID 0) before converting to move notations
         return [
             id_to_move[i] for i in idx if i != 0  # Skip BOS tokens
-        ]
+        ]  # end def to_moves
     # end to_moves
 
     def generate_moves(
@@ -600,7 +617,7 @@ class GPT(nn.Module):
             temperature: float = 1.0,
             top_k: int = None,
             recorder: ActivationRecorder = None,
-            to_return: List[str] = None
+            to_return: List[str] = None  # end def generate_moves
     ) -> Tuple[List[str], Any]:
         """
         Generate moves from sequence.
@@ -649,7 +666,7 @@ class GPT(nn.Module):
             temperature=1.0,
             top_k=None,
             recorder: ActivationRecorder = None,
-            to_return: List[str] = None,
+            to_return: List[str] = None,  # end def generate
     ) -> Tuple[torch.Tensor, List]:
         """
         Generate text by sampling from the model's distribution.
@@ -688,7 +705,7 @@ class GPT(nn.Module):
             # Optionally crop the logits to only the top k options
             if top_k is not None:
                 v, _ = torch.topk(logits, min(top_k, logits.size(-1)))
-                logits[logits < v[:, [-1]]] = -float('Inf')
+                logits[logits < v[:, [-1]]] = -float('Inf')  # end if
             # end if
 
             # Apply softmax to convert logits to (normalized) probabilities
@@ -698,10 +715,10 @@ class GPT(nn.Module):
             idx_next = torch.multinomial(probs, num_samples=1)
 
             # Append sampled index to the running sequence and continue
-            idx = torch.cat((idx, idx_next), dim=1)
+            idx = torch.cat((idx, idx_next), dim=1)  # end for
         # end for
 
         return idx, ret_list
     # end def generate
-
+# end class GPT
 # end class GPT

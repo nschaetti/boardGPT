@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
-Test script for the game_to_board function in boardGPT/utils/othello.py
+Test script for the game_to_board function in boardGPT/utils/othello_simulator.py
 """
 
-from boardGPT.utils.othello import game_to_board
-from boardGPT.simulators.othello import OthelloGame
+from boardGPT.games.othello.othello_utils import game_to_board
+from boardGPT.games.othello import OthelloGame
 
 def test_valid_moves():
     """Test with valid moves"""

@@ -1,3 +1,20 @@
+"""
+Copyright (C) 2025 boardGPT Contributors
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program.  If not, see <https://www.gnu.org/licenses/>.
+"""
+
 import os
 import random
 import numpy as np
@@ -5,7 +22,7 @@ from typing import List, Tuple, Dict, Optional, Any
 import sys
 
 from boardGPT.datasets.utils import load_othello_dataset
-from boardGPT.simulators.othello import OthelloGame, create_id_to_move_mapping, create_move_mapping
+from boardGPT.games.othello import OthelloGame, create_id_to_move_mapping, create_move_mapping
 from boardGPT.validation.metrics import is_valid_game_sequence
 
 
@@ -16,7 +33,7 @@ def get_errors(
         data_filename: str = "val.pkl",
         num_samples: int = 1000,
         temperature: float = 1.0,
-        top_k: int = None
+        top_k: int = None  # end def get_errors
 ) -> List[Dict[str, Any]]:
     """
     Return games where the last move (made by the model) is invalid.
@@ -64,13 +81,13 @@ def get_errors(
     for sequence in sampled_sequences:
         # Convert sequence to list if it's not already
         if not isinstance(sequence, list):
-            sequence = sequence.tolist()
+            sequence = sequence.tolist()  # end if
         # end if
         
         # Choose a random length for the opening moves (max 59 to have at least one move to predict)
         max_length: int = min(59, len(sequence) - 1)
         if max_length <= 0:
-            continue  # Skip sequences that are too short
+            continue  # Skip sequences that are too short  # end if
         # end if
 
         # Length of the opening sequence
@@ -108,14 +125,14 @@ def get_errors(
                     success = othello_game.make_move(row, col)
                     if not success:
                         # If a previous move is invalid, skip this game
-                        break
+                        break  # end if  # end for
                 # end for
                 
                 # Get valid moves for the current game state
                 valid_moves = []
                 for row, col in othello_game.get_valid_moves():
                     valid_move = othello_game.coords_to_notation(row, col)
-                    valid_moves.append(valid_move)
+                    valid_moves.append(valid_move)  # end for
                 # end for
                 
                 # Add the game to the list of invalid games
@@ -123,7 +140,7 @@ def get_errors(
                     'opening_moves': opening_moves_notation,
                     'generated_move': generated_move,
                     'valid_moves': valid_moves
-                })
+                })  # end if
             # end if
         # end if
     # end for

@@ -28,7 +28,7 @@ from typing import List, Optional
 # Add the project root to the path to import from boardGPT
 sys.path.append(os.path.abspath(os.path.dirname(__file__)))
 from boardGPT.utils import load_safetensors
-from boardGPT.simulators.othello import OthelloGame
+from boardGPT.games.othello import OthelloGame
 
 
 def parse_args():

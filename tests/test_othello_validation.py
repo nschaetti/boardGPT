@@ -7,7 +7,7 @@ generate_game function to ensure they work correctly.
 """
 
 import sys
-from simulators.othello import OthelloGame, generate_game
+from simulators.othello import OthelloGame, generate_othello_game
 
 def test_game_validation():
     """
@@ -23,7 +23,7 @@ def test_game_validation():
         print(f"\nGame {i+1}:")
         try:
             # Generate a game
-            moves = generate_game(seed=i)
+            moves = generate_othello_game(seed=i)
             
             # Load the game into a board
             board = OthelloGame.load_moves(moves)
@@ -52,7 +52,7 @@ def test_game_validation():
     
     try:
         # Generate a valid game using a fixed seed for reproducibility
-        valid_game = generate_game(seed=42)
+        valid_game = generate_othello_game(seed=42)
         print(f"  Generated game: {valid_game}")
         
         # Load the game

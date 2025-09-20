@@ -1,4 +1,21 @@
 """
+Copyright (C) 2025 boardGPT Contributors
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program.  If not, see <https://www.gnu.org/licenses/>.
+"""
+
+"""
 Transformer block implementation for the boardGPT model.
 
 This module provides a standard transformer block implementation with self-attention and MLP.
@@ -27,11 +44,11 @@ class MLP(nn.Module):
 
     def __init__(self, config):
         super().__init__()
-        self.c_fc = nn.Linear(config.n_embd, 4 * config.n_embd, bias=config.bias)
+        self.c_fc = nn.Linear(config.embed_dim, 4 * config.embed_dim, bias=config.bias)
         self.gelu = nn.GELU()
-        self.c_proj = nn.Linear(4 * config.n_embd, config.n_embd, bias=config.bias)
+        self.c_proj = nn.Linear(4 * config.embed_dim, config.embed_dim, bias=config.bias)
         self.dropout = nn.Dropout(config.dropout)
-
+    # end def __init__
     def forward(self, x):
         """
         Apply MLP to the input.
@@ -47,7 +64,7 @@ class MLP(nn.Module):
         x = self.c_proj(x)
         x = self.dropout(x)
         return x
-
+    # end def forward
 # end class MLP
 
 
@@ -66,10 +83,10 @@ class CausalSelfAttention(nn.Module):
     def __init__(
             self,
             config,
-            use_flash: bool = True
+            use_flash: bool = True  # end def __init__
     ):
         super().__init__()
-        assert config.n_embd % config.n_head == 0
+        assert config.embed_dim % config.n_head == 0
 
         # Hooks
         self.qk_hook = HookPoint()
@@ -77,16 +94,16 @@ class CausalSelfAttention(nn.Module):
 
         # key, query, value projections for all heads, but in a batch
         # n_embd => 3 * n_embd
-        self.c_attn = nn.Linear(config.n_embd, 3 * config.n_embd, bias=config.bias)
+        self.c_attn = nn.Linear(config.embed_dim, 3 * config.embed_dim, bias=config.bias)
 
         # output projection
-        self.c_proj = nn.Linear(config.n_embd, config.n_embd, bias=config.bias)
+        self.c_proj = nn.Linear(config.embed_dim, config.embed_dim, bias=config.bias)
 
         # regularization
         self.attn_dropout = nn.Dropout(config.dropout)
         self.resid_dropout = nn.Dropout(config.dropout)
         self.n_head = config.n_head
-        self.n_embd = config.n_embd
+        self.n_embd = config.embed_dim
         self.dropout = config.dropout
 
         # flash attention make GPU go brrrrr but support is only in PyTorch >= 2.0
@@ -99,7 +116,7 @@ class CausalSelfAttention(nn.Module):
                 tensor=torch.tril(
                     torch.ones(config.block_size, config.block_size)
                 ).view(1, 1, config.block_size, config.block_size)
-            )
+            )  # end if
         # end if
     # end __init__
 
@@ -107,7 +124,7 @@ class CausalSelfAttention(nn.Module):
             self,
             x,
             recorder: ActivationRecorder = None,
-            recorder_prefix: str = ""
+            recorder_prefix: str = ""  # end def forward
     ):
         """
         Apply causal self-attention to the input.
@@ -154,7 +171,7 @@ class CausalSelfAttention(nn.Module):
                 attn_mask=None,
                 dropout_p=self.dropout if self.training else 0,
                 is_causal=True
-            )
+            )  # end if
         else:
             # manual implementation of attention
             att = (q @ k.transpose(-2, -1)) * (1.0 / math.sqrt(k.size(-1)))
@@ -165,10 +182,10 @@ class CausalSelfAttention(nn.Module):
             att = F.softmax(att, dim=-1)
             self.qk_hook(att)
             if recorder is not None:
-                recorder.save(f"{recorder_prefix}.QK", att)
+                recorder.save(f"{recorder_prefix}.QK", att)  # end if
             # end if
             att = self.attn_dropout(att)
-            y = att @ v  # (B, nh, T, T) x (B, nh, T, hs) -> (B, nh, T, hs)
+            y = att @ v  # (B, nh, T, T) x (B, nh, T, hs) -> (B, nh, T, hs)  # end else
         # end if
 
         y = y.transpose(1, 2).contiguous().view(B, T, C)  # re-assemble all head outputs side by side
@@ -177,7 +194,7 @@ class CausalSelfAttention(nn.Module):
         y = self.resid_dropout(self.c_proj(y))
         return y
     # end def forward
-
+# end class CausalSelfAttention
 # end class CausalSelfAttention
 
 
@@ -195,17 +212,17 @@ class Block(nn.Module):
 
     def __init__(self, config, use_flash: bool = True):
         super().__init__()
-        self.ln_1 = LayerNorm(config.n_embd, bias=config.bias)
+        self.ln_1 = LayerNorm(config.embed_dim, bias=config.bias)
         self.attn = CausalSelfAttention(config, use_flash=use_flash)
-        self.ln_2 = LayerNorm(config.n_embd, bias=config.bias)
-        self.mlp = MLP(config)
+        self.ln_2 = LayerNorm(config.embed_dim, bias=config.bias)
+        self.mlp = MLP(config)  # end def __init__
     # end __init__
 
     def forward(
             self,
             x,
             recorder: ActivationRecorder = None,
-            recorder_prefix: str = ""
+            recorder_prefix: str = ""  # end def forward
     ):
         """
         Apply transformer block to the input.
@@ -231,7 +248,7 @@ class Block(nn.Module):
 
         # Save activation to recorder
         if recorder is not None:
-            recorder.save(f"{recorder_prefix}.residuals.attn", x)
+            recorder.save(f"{recorder_prefix}.residuals.attn", x)  # end if
         # end if
 
         # Block.mlp: torch.Size([b, t, 512])
@@ -242,10 +259,10 @@ class Block(nn.Module):
 
         # Save activation to recorder
         if recorder is not None:
-            recorder.save(f"{recorder_prefix}.residuals.mlp", x)
+            recorder.save(f"{recorder_prefix}.residuals.mlp", x)  # end if
         # end if
 
         return x
     # end def forward
-
+# end class Block
 # end class Block

@@ -14,7 +14,7 @@ The script implements the complete Othello game rules, including:
 - Move notation conversion between board coordinates and standard notation
 
 Usage:
-    python othello.py --num-games 100 --output games.bin
+    python othello_simulator.py --num-games 100 --output games.bin
 """
 
 import argparse
@@ -34,8 +34,8 @@ from matplotlib.widgets import Button
 from PIL import Image
 
 # Import the Othello simulator from the boardGPT package
-from boardGPT.simulators.othello import (
-    OthelloGame, OthelloBoard, generate_game, create_move_mapping, 
+from boardGPT.games.othello import (
+    OthelloGame, OthelloBoard, generate_othello_game, create_move_mapping,
     create_id_to_move_mapping, convert_ids_to_notation, load_games,
     extract_game_by_index, extract_games_by_length
 )
@@ -44,7 +44,12 @@ from boardGPT.simulators.othello import (
 console = Console()
 
 
-def generate_games(num_games: int, seed: int = None, output_file: str = None, chunk_size: int = None) -> List[List[str]]:
+def generate_games(
+        num_games: int,
+        seed: int = None,
+        output_file: str = None,
+        chunk_size: int = None
+) -> List[List[str]]:
     """
     Generate multiple Othello games.
     
@@ -89,7 +94,7 @@ def generate_games(num_games: int, seed: int = None, output_file: str = None, ch
             # Generate a single game and add it to the list
             # If seed is provided, use a different seed for each game to ensure variety
             game_seed = None if seed is None else seed + i
-            game = generate_game(game_seed)
+            game = generate_othello_game(game_seed)
             games.append(game)
             
             # Update the progress bar
@@ -135,7 +140,11 @@ def generate_games(num_games: int, seed: int = None, output_file: str = None, ch
 # end generate_games
 
 
-def save_games(games: List[List[str]], output_file: str, chunk_size: int = None) -> None:
+def save_games(
+        games: List[List[str]],
+        output_file: str,
+        chunk_size: int = None
+) -> None:
     """
     Save games to one or more binary files.
     

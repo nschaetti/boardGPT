@@ -1,0 +1,59 @@
+## GPLv3 License Header Template
+"""
+Copyright (C) 2025 boardGPT Contributors
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program.  If not, see <https://www.gnu.org/licenses/>.
+"""
+
+## File Docstring Template
+"""
+[Brief description of the file's purpose]
+
+This module provides [brief description of functionality].
+"""
+
+## Class Docstring Template
+"""
+[Brief description of the class]
+
+This class [brief description of what the class does].
+
+Attributes:
+    attr1 (type): Description of attr1.
+    attr2 (type): Description of attr2.
+"""
+
+## Method/Function Docstring Template
+"""
+[Brief description of the function/method]
+
+Args:
+    param1 (type): Description of param1.
+    param2 (type): Description of param2.
+
+Returns:
+    type: Description of return value.
+
+Raises:
+    ExceptionType: Description of when this exception is raised.
+"""
+
+## End Block Comment Templates
+# end if
+# end for
+# end while
+# end def function_name
+# end class ClassName
+# end try-except
+# end with

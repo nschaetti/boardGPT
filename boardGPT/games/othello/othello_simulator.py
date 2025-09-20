@@ -1,4 +1,21 @@
 """
+Copyright (C) 2025 boardGPT Contributors
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program.  If not, see <https://www.gnu.org/licenses/>.
+"""
+
+"""
 Othello game simulator.
 
 This module implements the Othello game rules and provides classes and functions
@@ -10,14 +27,12 @@ import numpy as np
 import pickle
 from collections import Counter
 from typing import List, Tuple, Set, Dict
-from rich.console import Console
 from rich.text import Text
+from rich.columns import Columns
 import matplotlib.pyplot as plt
 from matplotlib.widgets import Button
 from PIL import Image
-
-# Create a Rich console
-console = Console()
+from boardGPT.utils import console, warning, info, error
 
 
 class OthelloBoard:
@@ -27,7 +42,7 @@ class OthelloBoard:
             size: int = 8,
             empty: int = 0,
             black: int = 1,
-            white: int = 2
+            white: int = 2  # end def __init__
     ):
         """
         Initialize an Othello board.
@@ -91,8 +106,86 @@ class OthelloBoard:
         self.history.append(self.current_history)
         self.current_history = []
     # end def push_history
+    
+    def __str__(self, last_move=None):
+        """
+        Return a string representation of the board.
+        
+        Args:
+            last_move (tuple, optional): The coordinates (row, col) of the last move.
+                                         If provided, this move will be marked on the board.
+        
+        Returns:
+            str: A string representation of the board with | and - characters.
+                 Black pieces are represented as 'X' and white pieces as 'O'.
+                 The last move is marked with '*' on top of the square if provided.
+        """
+        # Create the horizontal line
+        horizontal_line = "  " + "-" * (len(self.board) * 4 + 1) + "\n"
+        
+        # Start with column labels
+        result = "  "
+        for col in range(len(self.board)):
+            result += f"  {chr(97 + col)} "  # 'a' through 'h' for standard 8x8 board
+        # end for
+        result += "\n"
+        
+        # Add the top border
+        result += horizontal_line
+        
+        # Add each row with pieces
+        for row in range(len(self.board)):
+            # Add row label
+            result += f"{row + 1} |"
+            
+            # Add pieces in the row
+            for col in range(len(self.board[row])):
+                piece = self.board[row][col]
+                
+                # Mark the last move with an asterisk
+                if last_move and last_move == (row, col):
+                    if piece == 0:  # Empty
+                        result += " * |"
+                    elif piece == 1:  # Black
+                        result += " X*|"
+                    elif piece == 2:  # White
+                        result += " O*|"
+                else:
+                    if piece == 0:  # Empty
+                        result += "   |"
+                    elif piece == 1:  # Black
+                        result += " X |"
+                    elif piece == 2:  # White
+                        result += " O |"
+                    # end if
+                # end if
+            # end for
+            
+            # End the row and add horizontal line
+            result += f" {row + 1}\n"
+            result += horizontal_line
+        # end for
+        
+        # Add column labels at the bottom
+        result += "  "
+        for col in range(len(self.board)):
+            result += f"  {chr(97 + col)} "
+        # end for
+        
+        return result
+    # end __str__
+    
+    def __repr__(self):
+        """
+        Return a string representation of the board (same as __str__).
+        
+        Returns:
+            str: A string representation of the board.
+        """
+        return self.__str__()
+    # end __repr__
 
-# end OthelloBoard
+# end class OthelloBoard
 
 
 class OthelloGame:
@@ -130,7 +223,7 @@ class OthelloGame:
         """
         Initialize a new Othello board with the standard starting position.
         
-        Creates an 8x8 empty board and sets up the initial four pieces in the center:
+        Creates a 8x8 empty board and sets up the initial four pieces in the center:
         - White pieces at positions (3,3) and (4,4)
         - Black pieces at positions (3,4) and (4,3)
         
@@ -145,7 +238,7 @@ class OthelloGame:
         # Keep track of moves made in standard notation (e.g., 'd3', 'e6')
         self.moves: List[str] = []
         self.moves_player: List[int] = []
-    # end __init__
+    # end def __init__
 
     # region PUBLIC
 
@@ -160,7 +253,7 @@ class OthelloGame:
         Returns:
             List[Tuple[int, int]]: A list of (row, col) tuples representing valid move positions
         """
-        # Initialize empty list to store valid moves
+        # Initialize an empty list to store valid moves
         valid_moves = []
 
         # Check every position on the board
@@ -168,12 +261,12 @@ class OthelloGame:
             for col in range(self.SIZE):
                 # If the move is valid, add it to the list
                 if self.is_valid_move(row, col):
-                    valid_moves.append((row, col))
+                    valid_moves.append((row, col))  # end if
                 # end if
             # end for
         # end for
 
-        return valid_moves
+        return valid_moves  # end def get_valid_moves
     # end get_valid_moves
 
     def is_valid_move(self, row: int, col: int) -> bool:
@@ -197,7 +290,7 @@ class OthelloGame:
         """
         # Rule 1: The cell must be empty
         if self.board.get_piece(row, col) != self.EMPTY:
-            return False
+            return False  # end if
         # end if
 
         # Rule 2: The move must flip at least one opponent's piece
@@ -257,7 +350,7 @@ class OthelloGame:
         """
         # First check if the move is valid
         if not self.is_valid_move(row, col):
-            return False
+            return False  # end if
         # end if
 
         # Place the current player's piece at the specified position
@@ -294,7 +387,7 @@ class OthelloGame:
 
             # Flip all opponent's pieces that were captured
             for flip_r, flip_c in to_flip:
-                self.board.set_piece(flip_r, flip_c, self.current_player)
+                self.board.set_piece(flip_r, flip_c, self.current_player)  # end for
             # end for
         # end for
 
@@ -311,8 +404,30 @@ class OthelloGame:
         # Switch to the other player for the next turn
         self.switch_player()
 
-        return True
+        return True  # end def make_move
     # end make_move
+
+    # Make a random move
+    def make_random_move(self):
+        # Get all valid moves for the current player
+        valid_moves = self.get_valid_moves()
+        if not valid_moves:
+            # No valid moves for current player, switch player
+            self.switch_player()
+
+            # Check if the other player also has no valid moves (game is over)
+            if not self.has_valid_moves():
+                return None
+            # end if
+
+            return self.make_random_move()
+        # end if
+
+        # Choose a random valid move from the available options
+        row, col = random.choice(valid_moves)
+        self.make_move(row, col)
+        return row, col
+    # end def make_random_move
 
     def has_valid_moves(self) -> bool:
         """
@@ -322,7 +437,7 @@ class OthelloGame:
             bool: True if the current player has at least one valid move, False otherwise
         """
         # Use the get_valid_moves method and check if the list is non-empty
-        return len(self.get_valid_moves()) > 0
+        return len(self.get_valid_moves()) > 0  # end def has_valid_moves
     # end has_valid_moves
 
     def switch_player(self) -> None:
@@ -332,7 +447,7 @@ class OthelloGame:
         Changes the current_player from BLACK to WHITE or from WHITE to BLACK.
         """
         # Toggle between BLACK and WHITE
-        self.current_player = self.WHITE if self.current_player == self.BLACK else self.BLACK
+        self.current_player = self.WHITE if self.current_player == self.BLACK else self.BLACK  # end def switch_player
     # end switch_player
 
     def is_game_over(self) -> bool:
@@ -355,7 +470,7 @@ class OthelloGame:
                     break
             if not is_full:
                 break
-        
+            # end if
         if is_full:
             return True
         # end if
@@ -373,7 +488,7 @@ class OthelloGame:
         self.switch_player()  # Switch back to original player
         
         # Game is over if neither player has valid moves
-        return not has_moves
+        return not has_moves  # end def is_game_over
     # end is_game_over
 
     def coords_to_notation(self, row: int, col: int) -> str:
@@ -392,7 +507,7 @@ class OthelloGame:
             str: Position in standard notation (e.g., 'e4' for row=3, col=4)
         """
         # Convert column index to letter (a-h) and row index to number (1-8)
-        return chr(97 + col) + str(row + 1)
+        return chr(97 + col) + str(row + 1)  # end def coords_to_notation
     # end coords_to_notation
 
     def notation_to_coords(self, notation: str) -> Tuple[int, int]:
@@ -411,6 +526,7 @@ class OthelloGame:
         # Check if the notation is valid (a letter followed by a number)
         if len(notation) != 2 or not notation[0].isalpha() or not notation[1].isdigit():
             raise ValueError(f"Invalid move notation: '{notation}'. Expected format is a letter (a-h) followed by a number (1-8).")
+        # end if
         
         # Convert letter (a-h) to column index (0-7) and number (1-8) to row index (0-7)
         col = ord(notation[0].lower()) - 97  # 'a' is ASCII 97, so 'a' -> 0, 'b' -> 1, etc.
@@ -419,8 +535,8 @@ class OthelloGame:
         # Check if the coordinates are within the board boundaries
         if not (0 <= col < self.SIZE and 0 <= row < self.SIZE):
             raise ValueError(f"Invalid move notation: '{notation}'. Coordinates out of bounds.")
-            
-        return row, col
+        # end if
+        return row, col  # end def notation_to_coords
     # end notation_to_coords
 
     def get_moves(self) -> List[str]:
@@ -437,7 +553,7 @@ class OthelloGame:
     def set_moves(
             self,
             moves: List[str],
-            moves_player: List[int],
+            moves_player: List[int],  # end def set_moves
     ) -> None:
         """
         Set the list of moves and players.
@@ -474,20 +590,20 @@ class OthelloGame:
         # Check if the game has moves
         if not self.moves:
             return False, "Game has no moves"
-            
+        # end if
         # Check game length is between 1 and 60
         if len(self.moves) < 1 or len(self.moves) > 60:
             return False, f"Game length {len(self.moves)} is not between 1 and 60"
-            
+        # end if
         # Check the number of moves equals the number of players
         if len(self.moves) != len(self.moves_player):
             return False, "Number of moves does not equal number of player entries"
-            
+        # end if
         # Check each player entry is either 1 (black) or 2 (white)
         for i, player in enumerate(self.moves_player):
             if player != self.BLACK and player != self.WHITE:
                 return False, f"Invalid player value {player} at move {i+1}"
-                
+            # end if
         # Create a new board to replay and validate the game
         board = OthelloGame()
         played_squares = set()
@@ -499,14 +615,14 @@ class OthelloGame:
             # Check move corresponds to a valid square (a1 to h8)
             if not (len(move) == 2 and 'a' <= move[0] <= 'h' and '1' <= move[1] <= '8'):
                 return False, f"Move {i+1} '{move}' is not a valid square (a1-h8)"
-                
+            # end if
             # Convert notation to coordinates
             row, col = board.notation_to_coords(move)
             
             # Check no square is played more than once
             square = (row, col)
             if square in played_squares:
-                return False, f"Square {move} at move {i+1} was already played"
+                return False, f"Square {move} at move {i+1} was already played"  # end if
             played_squares.add(square)
             
             # Check the player matches the expected player
@@ -518,48 +634,48 @@ class OthelloGame:
                     for c in range(self.SIZE):
                         if board.is_valid_move(r, c):
                             valid_moves.append((r, c))
-                
+                        # end if
                 # If current player had valid moves, this is an invalid pass
                 if valid_moves:
                     return False, f"Player {current_player} had valid moves but player {player} moved at move {i+1}"
-                
+                # end if
                 # Switch to the other player
                 current_player = self.WHITE if current_player == self.BLACK else self.BLACK
                 
                 # Check if the new player matches
                 if player != current_player:
                     return False, f"Invalid player sequence at move {i+1}"
-            
+                # end if
             # Check if the move is legal for the current player
             board.current_player = player
             if not board.is_valid_move(row, col):
                 return False, f"Move {i+1} '{move}' is not a legal move for player {player}"
-                
+            # end if
             # Make the move
             board.make_move(row, col)
             
             # Check that after the move, the chosen square belongs to the current player
             if board.board.get_piece(row, col) != player:
                 return False, f"After move {i+1}, square {move} does not belong to player {player}"
-                
+            # end if
             # Count total pieces on the board
             total_pieces = 0
             for r in range(self.SIZE):
                 for c in range(self.SIZE):
                     piece = board.board.get_piece(r, c)
                     if piece != self.EMPTY:
-                        total_pieces += 1
+                        total_pieces += 1  # end if
                     # Check every square is either empty, black, or white
                     if piece not in [self.EMPTY, self.BLACK, self.WHITE]:
                         return False, f"Invalid piece value {piece} at position ({r},{c})"
-            
+                    # end if
             # Check total pieces equals 4 + number of moves
             if total_pieces != 4 + (i + 1):
                 return False, f"After move {i+1}, total pieces {total_pieces} does not equal {4 + (i + 1)}"
-                
+            # end if
             # Update current player for next move
             current_player = self.WHITE if player == self.BLACK else self.BLACK
-        
+        # end for
         # Check end game conditions
         if len(self.moves) == 60:
             # If game ends at 60 moves, the board must be completely full
@@ -568,9 +684,9 @@ class OthelloGame:
                 for c in range(self.SIZE):
                     if board.board.get_piece(r, c) == self.EMPTY:
                         empty_squares += 1
-            
+                    # end if
             if empty_squares > 0:
-                return False, f"Game ended at 60 moves but board has {empty_squares} empty squares"
+                return False, f"Game ended at 60 moves but board has {empty_squares} empty squares"  # end if  # end if
         else:
             # If game ends before 60 moves, it must be because both players had no legal moves
             black_has_moves = False
@@ -582,33 +698,33 @@ class OthelloGame:
                 for c in range(self.SIZE):
                     if board.is_valid_move(r, c):
                         black_has_moves = True
-                        break
+                        break  # end if  # end for
                 if black_has_moves:
                     break
-            
+                # end if
             # Check if white has moves
             board.current_player = self.WHITE
             for r in range(self.SIZE):
                 for c in range(self.SIZE):
                     if board.is_valid_move(r, c):
                         white_has_moves = True
-                        break
+                        break  # end if  # end for
                 if white_has_moves:
                     break
-            
+                # end if
             if black_has_moves or white_has_moves:
                 return False, f"Game ended at {len(self.moves)} moves but at least one player still has valid moves"
-        
+            # end if
         # All validation checks passed
         return True, "Game is valid"
-
+    # end def validate_game
     # endregion PUBLIC
 
     def __len__(self):
         """
         Return the number of moves made in the game in standard notation.
         """
-        return len(self.moves)
+        return len(self.moves)  # end def __len__
     # end def __len__
 
     @staticmethod
@@ -649,30 +765,124 @@ class OthelloGame:
                         board.make_move(row, col)
                         valid_moves.append(m)
                     else:
-                        print(f"Warning: Skipping invalid move: {m} (not valid for either player)")
+                        warning(f"Skipping invalid move: {m} (not valid for either player)")  # end else
                     # end if
                 # end if
             except ValueError as e:
                 # Skip invalid move notations
-                print(f"Warning: {str(e)}")
+                warning(f"{str(e)}")
             # end try
         # end for
 
-        # Update the moves list to include only valid moves
+        # Update the move list to include only valid moves
         board.moves = valid_moves
         
         return board
     # end load_moves
 
-# end  OthelloGame
+    def show(self):
+        if not self.moves:
+            # If no moves have been made, just show the initial board
+            console.print(self.board)
+        # end if
+
+        # Create a new game and replay all moves to show the board after each move
+        column_items = []
+        replay_game = OthelloGame()
+
+        # Add the initial board
+        initial_board = ["\nInitial board:\n", str(replay_game.board)]
+        column_items.append("\n".join(initial_board))
+
+        # Replay each move and show the board after each move
+        for i, move in enumerate(self.moves):
+            # Get the player who made this move
+            player = self.moves_player[i]
+            player_name = "Black" if player == self.BLACK else "White"
+
+            # Set the current player in the replay game
+            replay_game.current_player = player
+
+            # Convert move notation to coordinates
+            row, col = replay_game.notation_to_coords(move)
+
+            # Make the move
+            replay_game.make_move(row, col)
+
+            # Create a string with the move information and board state
+            move_info = f"\nMove {i + 1}: {player_name} plays {move}\n"
+            board_str = replay_game.board.__str__(last_move=(row, col))
+            column_items.append("\n".join([move_info, board_str]))
+        # end for
+
+        # Create a Columns object with the board representations
+        columns = Columns(column_items)
+
+        # Convert the Columns object to a string and return it
+        console.print(columns)
+    # end show
+    
+    def __str__(self):
+        """
+        Return a string representation of the game.
+        
+        Shows only the board after the last move, with the last move displayed on top of the square.
+        
+        Returns:
+            str: A string representation of the game.
+        """
+        if not self.moves:
+            # If no moves have been made, just show the initial board
+            return str(self.board)
+        # end if
+
+        # Create a new game and replay all moves to get to the final state
+        replay_game = OthelloGame()
+
+        # Replay each move to reach the final state
+        for i, move in enumerate(self.moves):
+            # Get the player who made this move
+            player = self.moves_player[i]
+
+            # Set the current player in the replay game
+            replay_game.current_player = player
+            
+            # Convert move notation to coordinates
+            row, col = replay_game.notation_to_coords(move)
+            
+            # Make the move
+            replay_game.make_move(row, col)
+        # end for
+        
+        # Get the last move coordinates to mark on the board
+        last_move_row, last_move_col = replay_game.notation_to_coords(self.moves[-1])
+        
+        # Return the string representation of the final board state with the last move marked
+        return replay_game.board.__str__(last_move=(last_move_row, last_move_col))
+    # end def __str__
+    
+    def __repr__(self):
+        """
+        Return a string representation of the game (same as __str__).
+        
+        Returns:
+            str: A string representation of the game.
+        """
+        return self.__str__()
+    # end __repr__
+
+# end class OthelloGame
 
 
-def generate_game(seed: int = None, max_attempts: int = 100) -> List[str]:
+def generate_othello_game(
+        seed: int = None,
+        max_attempts: int = 100
+) -> List[str]:
     """
     Generate a single valid Othello game and return the list of moves.
     
     This function simulates an Othello game by making random valid moves
-    until either the game is over (no player has valid moves) or the maximum
+    until either the game is over (no player has valid moves), or the maximum
     number of moves is reached. It validates the generated game against all
     Othello rules and retries if the game is invalid.
     
@@ -683,12 +893,10 @@ def generate_game(seed: int = None, max_attempts: int = 100) -> List[str]:
     Returns:
         List[str]: List of moves in standard notation (e.g., ['d3', 'c4', 'e3'])
     """
-    global console
-
     # Set random seed if provided
     if seed is not None:
         random.seed(seed)
-        np.random.seed(seed)
+        np.random.seed(seed)  # end if
     # end if
     
     attempt = 0
@@ -697,48 +905,32 @@ def generate_game(seed: int = None, max_attempts: int = 100) -> List[str]:
         board = OthelloGame()
 
         # Continue making valid moves
-        still_valid = True
-        while still_valid:
-            # Get all valid moves for the current player
-            valid_moves = board.get_valid_moves()
-
-            if not valid_moves:
-                # No valid moves for current player, switch player
-                board.switch_player()
-                
-                # Check if the other player also has no valid moves (game is over)
-                if not board.has_valid_moves():
-                    still_valid = False
-                # end if
-                
-                continue
-            # end if
-
-            # Choose a random valid move from the available options
-            row, col = random.choice(valid_moves)
-            board.make_move(row, col)
+        move_done = False
+        while not move_done:
+            # Make a random move
+            rnd_move = board.make_random_move()
+            move_done = rnd_move is None
         # end while
 
         # Validate the generated game
         is_valid, error_message = board.validate_game()
-        
         if is_valid:
             # Return the list of moves made during the game
             return board.get_moves()
         else:
-            console.print("[orange bold]Invalid Othello game! Retrying...[/]")
+            warning("Invalid Othello game! Retrying...")
             # Try again with a different seed
             attempt += 1
             if seed is not None:
                 # Use a different seed for each attempt
                 random.seed(seed + attempt)
-                np.random.seed(seed + attempt)
+                np.random.seed(seed + attempt)  # end if
             # end if
         # end if
     # end while
     
     # If we've reached the maximum number of attempts, raise an exception
-    raise RuntimeError(f"Failed to generate a valid Othello game after {max_attempts} attempts")
+    raise RuntimeError(f"Failed to generate a valid Othello game after {max_attempts} attempts")  # end def generate_game
 # end generate_game
 
 
@@ -764,7 +956,7 @@ def create_move_mapping() -> Dict[str, int]:
         for row in range(8):  # 1-8
             # Move not possible on the centered square
             if (3 <= col <= 4) and (3 <= row <= 4):
-                continue
+                continue  # end if
             # end if
             notation = chr(97 + col) + str(row + 1)
             move_to_id[notation] = id_counter
@@ -772,7 +964,7 @@ def create_move_mapping() -> Dict[str, int]:
         # end for
     # end for
     
-    return move_to_id
+    return move_to_id  # end def create_move_mapping
 # end create_move_mapping
 
 
@@ -793,7 +985,7 @@ def create_id_to_move_mapping() -> Dict[int, str]:
     # Create the reverse mapping
     id_to_move = {id: move for move, id in move_to_id.items()}
     
-    return id_to_move
+    return id_to_move  # end def create_id_to_move_mapping
 # end create_id_to_move_mapping
 
 
@@ -811,11 +1003,11 @@ def convert_ids_to_notation(game: List[int]) -> List[str]:
     id_to_move = create_id_to_move_mapping()
     
     # Convert move IDs to move notations, skipping the BOS token (ID 0) if present
-    return [id_to_move[move_id] for move_id in game if move_id != 0]
+    return [id_to_move[move_id] for move_id in game if move_id != 0]  # end def convert_ids_to_notation
 # end convert_ids_to_notation
 
 
-def load_games(input_file: str) -> List[List[int]]:
+def load_games(input_file: str) -> List[List[str]]:
     """
     Load games from a binary file.
     
@@ -828,10 +1020,10 @@ def load_games(input_file: str) -> List[List[int]]:
         input_file (str): Path to the input file
         
     Returns:
-        List[List[int]]: List of games, where each game is a list of move IDs
+        List[List[str]]: List of games as moves
     """
     with open(input_file, 'rb') as f:
-        game_sequences = pickle.load(f)
+        game_sequences = pickle.load(f)  # end with
     # end with
     
     # Convert arrays back to lists for compatibility with existing code
@@ -839,17 +1031,17 @@ def load_games(input_file: str) -> List[List[int]]:
     for game in game_sequences:
         if isinstance(game, np.ndarray):
             # Convert numpy array to regular Python list
-            result.append(game.tolist())
+            result.append(game.tolist())  # end if
         elif hasattr(game, 'typecode') and game.typecode == 'B':
             # Convert array.array to regular Python list
-            result.append(list(game))
+            result.append(list(game))  # end elif
         else:
             # Already a list, no conversion needed
-            result.append(game)
+            result.append(game)  # end else
         # end if
     # end for
     
-    return result
+    return result  # end def load_games
 # end def load_games
 
 
@@ -865,8 +1057,8 @@ def extract_game_by_index(games: List[List[int]], index: int) -> List[int]:
         List[int]: The extracted game as a list of move IDs
     """
     if index < 0 or index >= len(games):
-        raise ValueError(f"Index {index} out of range. There are {len(games)} games.")
-    return games[index]
+        raise ValueError(f"Index {index} out of range. There are {len(games)} games.")  # end if
+    return games[index]  # end def extract_game_by_index
 # end def extract_game_by_index
 
 
@@ -881,5 +1073,5 @@ def extract_games_by_length(games: List[List[int]], length: int) -> List[Tuple[i
     Returns:
         List[Tuple[int, List[int]]]: List of tuples (index, game) with the specified length
     """
-    return [(i, game) for i, game in enumerate(games) if len(game) - 1 == length]
+    return [(i, game) for i, game in enumerate(games) if len(game) - 1 == length]  # end def extract_games_by_length
 # end def extract_games_by_length

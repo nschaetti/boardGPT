@@ -1,3 +1,19 @@
+"""
+Copyright (C) 2025 boardGPT Contributors
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program.  If not, see <https://www.gnu.org/licenses/>.
+"""
 
 import os
 import pickle
@@ -11,7 +27,7 @@ def load_othello_dataset(
         split: str,
         data_filename: str,
         flatten: bool = True,
-        log: bool = True,
+        log: bool = True,  # end def load_othello_dataset
 ) -> Union[List[int], List[List[int]]]:
     """
     ...
@@ -41,7 +57,7 @@ def load_othello_dataset(
         print(f"Falling back to {os.path.join(fallback_data_dir, data_filename)}")
 
         with open(os.path.join(fallback_data_dir, data_filename), 'rb') as f:
-            game_sequences = pickle.load(f)
+            game_sequences = pickle.load(f)  # end with
         # end with
     else:
         # Load all bin files and combine their data
@@ -51,15 +67,15 @@ def load_othello_dataset(
             if log: print(f"Loading {bin_file}...")
             with open(bin_file, 'rb') as f:
                 sequences = pickle.load(f)
-                game_sequences.extend(sequences)
+                game_sequences.extend(sequences)  # end with
             # end with
         # end for
     # end if
 
     # Concatenate game sequences
     if flatten:
-        return [x for sublist in game_sequences for x in sublist.tolist()]
+        return [x for sublist in game_sequences for x in sublist.tolist()]  # end if
     else:
-        return game_sequences
+        return game_sequences  # end else
     # end if
 # end def load_othello_dataset

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Test script for the crop_to_square function in othello.py
+Test script for the crop_to_square function in othello_simulator.py
 """
 
 import os

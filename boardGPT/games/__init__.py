@@ -15,18 +15,16 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 
-from .models import load_safetensors
-from .viz import plot_attention_matrix, plot_heads_attention, show_linear_probe_samples
-from .logging import (
-    info, warning, error, debug, success,
-    print_exception, log_exception, console
+"""
+Simulators for board games.
+"""
+
+from .othello import (
+    create_id_to_move_mapping,
+    convert_ids_to_notation
 )
 
 __all__ = [
-    "load_safetensors",
-    "plot_attention_matrix",
-    "plot_heads_attention",
-    "show_linear_probe_samples",
-    "info", "warning", "error", "debug", "success",
-    "print_exception", "log_exception", "console"
+    "create_id_to_move_mapping",
+    "convert_ids_to_notation"
 ]

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Test script to verify the memory-efficient save_games and load_games functions in othello.py
+Test script to verify the memory-efficient save_games and load_games functions in othello_simulator.py
 """
 
 import os

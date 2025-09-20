@@ -1,10 +1,25 @@
+"""
+Copyright (C) 2025 boardGPT Contributors
 
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program.  If not, see <https://www.gnu.org/licenses/>.
+"""
 
 # Imports
 import sys
 import os
 from typing import List, Tuple, Optional
-from boardGPT.simulators.othello import OthelloGame
+from .othello_simulator import OthelloGame
 
 
 def verify_game(moves: List[str]) -> Tuple[bool, List[str]]:
@@ -32,21 +47,21 @@ def verify_game(moves: List[str]) -> Tuple[bool, List[str]]:
         if not (len(move) == 2 and 'a' <= move[0].lower() <= 'h' and '1' <= move[1] <= '8'):
             invalid_moves.append(move)
             continue
-            
+        # end if
         # Convert notation to coordinates
         try:
-            row, col = board.notation_to_coords(move)
+            row, col = board.notation_to_coords(move)  # end try
         except ValueError:
             # Invalid notation
             invalid_moves.append(move)
             continue
-        
+        # end except
         # Set the current player
         board.current_player = current_player
         
         # Check if the move is legal for the current player
         if not board.is_valid_move(row, col):
-            # If not valid for current player, check if it's valid after a pass
+            # If not valid for the current player, check if it's valid after a pass
             board.current_player = board.WHITE if current_player == board.BLACK else board.BLACK
             
             # Check if the move is valid for the other player
@@ -54,19 +69,19 @@ def verify_game(moves: List[str]) -> Tuple[bool, List[str]]:
                 # Not valid for either player
                 invalid_moves.append(move)
                 continue
-                
+            # end if
             # Valid for the other player (implies a pass)
             current_player = board.current_player
-        
+        # end if
         # Make the move
         board.make_move(row, col)
         
         # Update current player for next move
         current_player = board.WHITE if current_player == board.BLACK else board.BLACK
-    
+    # end for
     # Return True if all moves are valid, False otherwise
     return len(invalid_moves) == 0, invalid_moves
-
+# end def verify_game
 
 def game_to_board(moves: List[str]) -> List[int]:
     """
@@ -105,18 +120,18 @@ def game_to_board(moves: List[str]) -> List[int]:
                 # Check if the move is valid for the other player
                 if not game.is_valid_move(row, col):
                     # Not valid for either player, raise an exception
-                    raise ValueError(f"Move {move} is invalid for both players")
+                    raise ValueError(f"Move {move} is invalid for both players")  # end if
                 # end if
             # end if
             
             # Make the move
-            game.make_move(row, col)
+            game.make_move(row, col)  # end try
         except ValueError as e:
             # Re-raise ValueError for invalid moves for both players
             if "invalid for both players" in str(e):
-                raise
+                raise  # end if
             # Skip moves with invalid notation
-            continue
+            continue  # end except
         # end try-except
     # end for
     
@@ -136,16 +151,16 @@ def game_to_board(moves: List[str]) -> List[int]:
 
             # Convert from OthelloGame representation to required representation
             if piece == game.BLACK:
-                board_1d.append(2)  # BLACK = 2
+                board_1d.append(2)  # BLACK = 2  # end if
             elif piece == game.WHITE:
-                board_1d.append(1)  # WHITE = 1
+                board_1d.append(1)  # WHITE = 1  # end elif
             else:
-                board_1d.append(0)  # EMPTY = 0
+                board_1d.append(0)  # EMPTY = 0  # end else
             # end for
         # end for
     # end for
 
     assert len(board_1d) == 64, f"Error: board representation must contain 64 output"
     
-    return board_1d
+    return board_1d  # end def game_to_board
 # end game_to_board
