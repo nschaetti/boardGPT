@@ -7,6 +7,7 @@ log_interval: 1                 # How often to log training progress
 eval_iters: 4                 # Number of batches to use for evaluation
 eval_only: false                # If True, script exits right after the first eval
 always_save_checkpoint: true    # If True, always save a checkpoint after each eval
+ood_perc: 0.0                   # Ratio of generated samples on the fly
 
 # wandb logging settings
 wandb_log: false                # Whether to use wandb logging (disabled by default)
@@ -23,7 +24,7 @@ block_size: 61                         # Context size for the model
 vocab_size: 61                  # Vocabulary size
 n_layer: 8                      # Number of transformer layers
 n_head: 8                       # Number of attention heads
-n_embd: 512                     # Embedding dimension
+n_embd: 512                  # Embedding dimension
 dropout: 0.0                    # Dropout rate (0 for pretraining, try 0.1+ for finetuning)
 bias: false                     # Whether to use bias in LayerNorm and Linear layers
 

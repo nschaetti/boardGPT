@@ -48,10 +48,11 @@ import torch
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.distributed import init_process_group, destroy_process_group
 
-from boardGPT.datasets import load_othello_dataset
+# BoardGPT
+from boardGPT.datasets import load_othello_data_files, GameDataset
 from boardGPT.models import GPTConfig, GPT
-from simulators.othello import OthelloGame, create_id_to_move_mapping, create_move_mapping
 from boardGPT.validation.metrics import is_valid_game_sequence, invalid_move_rate
+from boardGPT.utils import info, error, warning
 
 # -----------------------------------------------------------------------------
 # Configuration handling
@@ -65,16 +66,152 @@ def parse_args():
         argparse.Namespace: Parsed command line arguments
     """
     parser = argparse.ArgumentParser(description='Train a GPT model for board games')
-    parser.add_argument('--config', type=str, default='config.yaml', 
-                        help='Path to the YAML configuration file')
-    parser.add_argument('--data_dir', type=str, required=True,
-                        help='Path to the data directory. This directory must contain "train" and "val" folders with bin files for each split.')
+    parser.add_argument(
+        '--config',
+        type=str,
+        default='config.yaml',
+        help='Path to the YAML configuration file'
+    )
+
+    parser.add_argument(
+        '--data-dir',
+        type=str,
+        required=True,
+        help='Path to the data directory. This directory must contain "train" and "val" folders with bin files for each split.'
+    )
+
     parser.add_argument('--ckpt', type=str, default=None,
                         help='Path to a checkpoint file (.pt) to load weights from. If not specified, a new model will be initialized from scratch.')
     parser.add_argument('--num-iter', type=int, default=None,
                         help='Iteration number to start from when resuming from a checkpoint. Used with --ckpt.')
     return parser.parse_args()
 # end def parse_args
+
+class TrainingConfig:
+    """
+    Configuration class for training that loads from a YAML file and provides
+    property-based access to configuration values.
+    """
+    def __init__(self, config_dict=None):
+        """
+        Initialize the training configuration with a dictionary.
+        
+        Args:
+            config_dict (dict, optional): Dictionary containing configuration values.
+                                         If None, an empty dictionary is used.
+        """
+        self._config = config_dict or {}
+        
+    @classmethod
+    def from_yaml(cls, config_path):
+        """
+        Load configuration from a YAML file.
+        
+        Args:
+            config_path (str): Path to the YAML configuration file
+            
+        Returns:
+            TrainingConfig: Configuration object
+        """
+        try:
+            with open(config_path, 'r') as f:
+                config_dict = yaml.safe_load(f)
+            # end with
+            print(f"Loaded configuration from {config_path}")
+            return cls(config_dict)
+        except FileNotFoundError:
+            print(f"Configuration file {config_path} not found. Using default configuration.")
+            return cls({})
+        except yaml.YAMLError as e:
+            print(f"Error parsing YAML configuration file: {e}")
+            return cls({})
+        # end try
+    
+    def __getattr__(self, name):
+        """
+        Get a configuration value by attribute name.
+        
+        Args:
+            name (str): Name of the configuration property
+            
+        Returns:
+            Any: Value of the configuration property
+            
+        Raises:
+            AttributeError: If the property doesn't exist in the configuration
+        """
+        if name in self._config:
+            return self._config[name]
+        raise AttributeError(
+            f"'{self.__class__.__name__}' object has no attribute "
+            f"'{name}' (available attributes: {self._config.keys()})"
+        )
+    
+    def __getitem__(self, key):
+        """
+        Get a configuration value by dictionary-style access.
+        
+        Args:
+            key (str): Name of the configuration property
+            
+        Returns:
+            Any: Value of the configuration property
+            
+        Raises:
+            KeyError: If the property doesn't exist in the configuration
+        """
+        if key in self._config:
+            return self._config[key]
+        # end if
+        raise KeyError(key)
+    
+    def __setattr__(self, name, value):
+        """
+        Set a configuration value by attribute name.
+        
+        Args:
+            name (str): Name of the configuration property
+            value (Any): Value to set
+        """
+        if name == '_config':
+            super().__setattr__(name, value)
+        else:
+            self._config[name] = value
+    
+    def __setitem__(self, key, value):
+        """
+        Set a configuration value by dictionary-style access.
+        
+        Args:
+            key (str): Name of the configuration property
+            value (Any): Value to set
+        """
+        self._config[key] = value
+    
+    def get(self, name, default=None):
+        """
+        Get a configuration value with a default fallback.
+        
+        Args:
+            name (str): Name of the configuration property
+            default (Any, optional): Default value if property doesn't exist
+            
+        Returns:
+            Any: Value of the configuration property or default
+        """
+        return self._config.get(name, default)
+    
+    def __contains__(self, name):
+        """
+        Check if a configuration property exists.
+        
+        Args:
+            name (str): Name of the configuration property
+            
+        Returns:
+            bool: True if property exists, False otherwise
+        """
+        return name in self._config
 
 def load_config(config_path):
     """
@@ -84,21 +221,9 @@ def load_config(config_path):
         config_path (str): Path to the YAML configuration file
         
     Returns:
-        dict: Configuration dictionary
+        TrainingConfig: Configuration object
     """
-    try:
-        with open(config_path, 'r') as f:
-            config = yaml.safe_load(f)
-        # end with
-        print(f"Loaded configuration from {config_path}")
-        return config
-    except FileNotFoundError:
-        print(f"Configuration file {config_path} not found. Using default configuration.")
-        return {}
-    except yaml.YAMLError as e:
-        print(f"Error parsing YAML configuration file: {e}")
-        return {}
-    # end try
+    return TrainingConfig.from_yaml(config_path)
 # end def load_config
 
 def setup_training_environment(config):
@@ -107,7 +232,7 @@ def setup_training_environment(config):
     random seeds, and device configuration.
     
     Args:
-        config (dict): Configuration dictionary
+        config (TrainingConfig): Configuration object
         
     Returns:
         tuple: Contains various setup parameters including master_process flag,
@@ -115,7 +240,7 @@ def setup_training_environment(config):
     """
     # Check if this is a distributed data parallel (DDP) run
     ddp = int(os.environ.get('RANK', -1)) != -1
-    
+
     # Initialize variables
     ddp_rank = None
     ddp_local_rank = None
@@ -124,7 +249,7 @@ def setup_training_environment(config):
     seed_offset = 0
     gradient_accumulation_steps = config['gradient_accumulation_steps']
     device = config['device']
-    
+
     if ddp:
         # Initialize the distributed process group
         init_process_group(backend=config['backend'])
@@ -135,7 +260,7 @@ def setup_training_environment(config):
         torch.cuda.set_device(device)
         master_process = ddp_rank == 0  # This process will do logging, checkpointing etc.
         seed_offset = ddp_rank  # Each process gets a different seed
-        
+
         # Scale down gradient accumulation steps proportionally to world size
         assert gradient_accumulation_steps % ddp_world_size == 0
         gradient_accumulation_steps //= ddp_world_size
@@ -147,7 +272,7 @@ def setup_training_environment(config):
     
     # Calculate tokens per iteration for logging
     tokens_per_iter = gradient_accumulation_steps * ddp_world_size * config['batch_size'] * config['block_size']
-    print(f"tokens per iteration will be: {tokens_per_iter:,}")
+    info(f"tokens per iteration will be: {tokens_per_iter:,}")
     
     # Create output directory if needed (only on master process)
     if master_process:
@@ -184,8 +309,8 @@ def get_board_batch(split, config, device, device_type):
     
     Args:
         split (str): 'train' or 'val' to specify which data split to use
-        config (dict): Configuration dictionary containing 'data_dir' which points to a directory
-                      with 'train' and 'val' folders containing bin files for each split
+        config (TrainingConfig): Configuration object containing 'data_dir' which points to a directory
+                                with 'train' and 'val' folders containing bin files for each split
         device (str): Device to use for tensors
         device_type (str): Type of device ('cuda' or 'cpu')
         
@@ -199,7 +324,7 @@ def get_board_batch(split, config, device, device_type):
         print(f"Loading {split} data into memory...")
         
         # Data dir for the specified split (train or val)
-        data_dir = os.path.join(config['data_dir'], split)
+        data_dir = os.path.join(config.data_dir, split)
         
         # Pattern for bin files
         pattern = "*.bin"
@@ -274,8 +399,8 @@ def get_batch(split, config, device, device_type):
     
     Args:
         split (str): 'train' or 'val' to specify which data split to use
-        config (dict): Configuration dictionary containing 'data_dir' which points to a directory
-                      with 'train' and 'val' folders containing bin files for each split
+        config (TrainingConfig): Configuration object containing 'data_dir' which points to a directory
+                                with 'train' and 'val' folders containing bin files for each split
         device (str): Device to use for tensors
         device_type (str): Type of device ('cuda' or 'cpu')
         
@@ -286,7 +411,7 @@ def get_batch(split, config, device, device_type):
     # https://stackoverflow.com/questions/45132940/numpy-memmap-memory-usage-want-to-iterate-once/61472122#61472122
     
     # Use the data directory from the configuration, with the appropriate split folder
-    data_dir = os.path.join(config['data_dir'], split)
+    data_dir = os.path.join(config.data_dir, split)
     bin_file = os.path.join(data_dir, f'{split}.bin')
     
     # Check if the bin file exists
@@ -318,12 +443,46 @@ def get_batch(split, config, device, device_type):
     return x, y
 # end get_batch
 
+def get_dataloader(
+        split: str,
+        config: TrainingConfig
+) -> torch.utils.data.DataLoader:
+    """
+    Get dataloaders for training and validation.
+
+    Args:
+        split (str): 'train' or 'val' to specify which data split to use
+        config (TrainingConfig): Configuration object containing 'data_dir' which points to a directory
+        with 'train' and 'val' folders containing bin files for each split
+    """
+    dataset = GameDataset(
+        data_dir=config.data_dir,
+        split=split,
+        block_size=config.block_size,
+        ood_perc=config.ood_perc,
+        num_samples=config.num_samples
+    )
+
+    # Create a dataloader
+    dataloader = torch.utils.data.DataLoader(
+        dataset=dataset,
+        batch_size=config.batch_size,
+        num_workers=config.num_workers,
+        pin_memory=config.pin_memory,
+        shuffle=config.shuffle,
+        drop_last=config.drop_last,
+    )
+
+    return dataloader
+# end def get_dataloader
+
+
 def initialize_model(config, device, ckpt_path=None, start_iter=None):
     """
     Initialize the model based on checkpoint arguments or from scratch.
     
     Args:
-        config (dict): Configuration dictionary
+        config (TrainingConfig): Configuration object
         device (str): Device to use for the model
         ckpt_path (str, optional): Path to a checkpoint file to load weights from.
         start_iter (int, optional): Iteration number to start from when resuming from a checkpoint.
@@ -340,17 +499,17 @@ def initialize_model(config, device, ckpt_path=None, start_iter=None):
     
     # Set up model arguments from configuration
     model_args = dict(
-        n_layer=config['n_layer'], 
-        n_head=config['n_head'], 
-        n_embd=config['n_embd'], 
-        block_size=config['block_size'],
-        bias=config['bias'], 
+        n_layer=config.n_layer,
+        n_head=config.n_head,
+        n_embd=config.n_embd,
+        block_size=config.block_size,
+        bias=config.bias,
         vocab_size=None, 
-        dropout=config['dropout']
+        dropout=config.dropout
     )
 
     # Vocab size
-    vocab_size = config['vocab_size']
+    vocab_size = config.vocab_size
     
     # Check if a specific checkpoint path is provided via command line
     if ckpt_path is not None:
@@ -404,9 +563,9 @@ def initialize_model(config, device, ckpt_path=None, start_iter=None):
     # end if
     
     # Crop down the model block size if desired, using model surgery
-    if config['block_size'] < model.config.block_size:
-        model.crop_block_size(config['block_size'])
-        model_args['block_size'] = config['block_size']  # So that the checkpoint will have the right value
+    if config.block_size < model.config.block_size:
+        model.crop_block_size(config.block_size)
+        model_args['block_size'] = config.block_size  # So that the checkpoint will have the right value
     # end if
     
     # Move model to the specified device
@@ -424,7 +583,7 @@ def estimate_loss(model, ctx, config, device, device_type):
     Args:
         model: The model to evaluate
         ctx: Context manager for mixed precision
-        config (dict): Configuration dictionary
+        config (TrainingConfig): Configuration object
         device (str): Device to use for tensors
         device_type (str): Type of device ('cuda' or 'cpu')
         
@@ -465,7 +624,7 @@ def estimate_loss(model, ctx, config, device, device_type):
             print(f"Computing invalid move ratio on {split} split...")
             inv_rate_ratio = invalid_move_rate(
                 model=model,
-                data_dir=config['data_dir'],
+                data_dir=config.data_dir,
                 split=split,
                 data_filename="",
                 device=device,
@@ -486,7 +645,7 @@ def get_lr(it, config):
     
     Args:
         it (int): Current iteration number
-        config (dict): Configuration dictionary
+        config (TrainingConfig): Configuration object
         
     Returns:
         float: Learning rate for the current iteration
@@ -513,7 +672,7 @@ def setup_optimizer(model, config, device_type, checkpoint=None):
     
     Args:
         model: The model to optimize
-        config (dict): Configuration dictionary
+        config (TrainingConfig): Configuration object
         device_type (str): Type of device ('cuda' or 'cpu')
         checkpoint: Optional checkpoint dictionary for resuming training
         
@@ -539,6 +698,7 @@ def setup_optimizer(model, config, device_type, checkpoint=None):
     # end if
     
     return optimizer, scaler
+# end def setup_optimizer
 
 def save_checkpoint(
         model,
@@ -556,7 +716,7 @@ def save_checkpoint(
         optimizer: The optimizer to save
         iter_num (int): Current iteration number
         best_val_loss (float): Best validation loss so far
-        config (dict): Configuration dictionary
+        config (TrainingConfig): Configuration object
         model_args (dict): Model arguments
     """
     checkpoint = {
@@ -579,6 +739,18 @@ def save_checkpoint(
 # end save_checkpoint
 
 
+def infinite_loader(
+        dataloader: torch.utils.data.DataLoader
+):
+    while True:
+        for batch in dataloader:
+            X, Y = batch
+            yield X, Y
+        # end for
+    # end while
+# end def infinite_loader
+
+
 def main():
     """
     Main training function that orchestrates the entire training process.
@@ -587,25 +759,25 @@ def main():
     args = parse_args()
     
     # Load configuration from YAML file
-    config = load_config(args.config)
-    
+    # config = load_config(args.config)
+    config = TrainingConfig.from_yaml(args.config)
+    print(config._config)
     # Add data directory from command line arguments to the configuration
-    config['data_dir'] = args.data_dir
-    print(f"Using data directory: {config['data_dir']}")
+    config.data_dir = args.data_dir
+    info(f"Using data directory: {config.data_dir}")
     
     # Set up the training environment
     ddp, master_process, seed_offset, ddp_world_size, ddp_local_rank, device, device_type, ctx, gradient_accumulation_steps = setup_training_environment(config)
     
     # Initialize the model
-    model, iter_num, best_val_loss, model_args = initialize_model(config, device, args.ckpt, args.num_iter)
+    model, last_iter_num, best_val_loss, model_args = initialize_model(config, device, args.ckpt, args.num_iter)
     
     # Set up the optimizer and gradient scaler
     optimizer, scaler = setup_optimizer(model, config, device_type)
     
     # Compile the model if requested (requires PyTorch 2.0+)
     if config['compile']:
-        print("compiling the model... (takes a ~minute)")
-        unoptimized_model = model
+        info("compiling the model... (takes a ~minute)")
         model = torch.compile(model)
     # end if
     
@@ -628,11 +800,14 @@ def main():
     
     # Training loop initialization
     # Use the appropriate data loading function based on the configuration
-    if config.get('board_game'):
-        X, Y = get_board_batch('train', config, device, device_type)  # Fetch the very first batch for board game
-    else:
-        X, Y = get_batch('train', config, device, device_type)  # Fetch the very first batch for text
-    # end if
+    # if config.get('board_game'):
+    #     X, Y = get_board_batch('train', config, device, device_type)  # Fetch the very first batch for board game
+    # else:
+    #     X, Y = get_batch('train', config, device, device_type)  # Fetch the very first batch for text
+    # # end if
+    dataloader = get_dataloader(split="train", config=config)
+    data_iter = infinite_loader(dataloader)
+    X, Y = next(data_iter)
 
     t0 = time.time()
     local_iter_num = 0  # Number of iterations in the lifetime of this process
@@ -640,7 +815,7 @@ def main():
     running_mfu = -1.0
     
     # Main training loop
-    while True:
+    for iter_num in range(last_iter_num, config['n_iter'] + 1):
         # Determine and set the learning rate for this iteration
         lr = get_lr(iter_num, config) if config['decay_lr'] else config['learning_rate']
         for param_group in optimizer.param_groups:
@@ -684,7 +859,7 @@ def main():
         # and using the GradScaler if data type is float16
         for micro_step in range(gradient_accumulation_steps):
             if ddp:
-                # In DDP training we only need to sync gradients at the last micro step.
+                # In DDP training, we only need to sync gradients at the last micro step.
                 # The official way to do this is with model.no_sync() context manager, but
                 # looking at the source of that context manager, it just toggles this variable
                 model.require_backward_grad_sync = (micro_step == gradient_accumulation_steps - 1)
@@ -699,11 +874,12 @@ def main():
             
             # Immediately async prefetch next batch while model is doing the forward pass on the GPU
             # Use the appropriate data loading function based on the configuration
-            if config.get('board_game'):
-                X, Y = get_board_batch('train', config, device, device_type)
-            else:
-                X, Y = get_batch('train', config, device, device_type)
-            # end if
+            # if config.get('board_game'):
+            #     X, Y = get_board_batch('train', config, device, device_type)
+            # else:
+            #     X, Y = get_batch('train', config, device, device_type)
+            # # end if
+            X, Y = next(data_iter)
             
             # Backward pass, with gradient scaling if training in fp16
             scaler.scale(loss).backward()
@@ -758,7 +934,7 @@ def main():
         if iter_num > config['max_iters']:
             break
         # end if
-    # end while
+    # end for epochs
     
     # Clean up distributed process group if using DDP
     if ddp:

@@ -44,9 +44,9 @@ class MLP(nn.Module):
 
     def __init__(self, config):
         super().__init__()
-        self.c_fc = nn.Linear(config.embed_dim, 4 * config.embed_dim, bias=config.bias)
+        self.c_fc = nn.Linear(config.n_embd, 4 * config.n_embd, bias=config.bias)
         self.gelu = nn.GELU()
-        self.c_proj = nn.Linear(4 * config.embed_dim, config.embed_dim, bias=config.bias)
+        self.c_proj = nn.Linear(4 * config.n_embd, config.n_embd, bias=config.bias)
         self.dropout = nn.Dropout(config.dropout)
     # end def __init__
     def forward(self, x):
@@ -86,7 +86,7 @@ class CausalSelfAttention(nn.Module):
             use_flash: bool = True  # end def __init__
     ):
         super().__init__()
-        assert config.embed_dim % config.n_head == 0
+        assert config.n_embd % config.n_head == 0
 
         # Hooks
         self.qk_hook = HookPoint()
@@ -94,16 +94,16 @@ class CausalSelfAttention(nn.Module):
 
         # key, query, value projections for all heads, but in a batch
         # n_embd => 3 * n_embd
-        self.c_attn = nn.Linear(config.embed_dim, 3 * config.embed_dim, bias=config.bias)
+        self.c_attn = nn.Linear(config.n_embd, 3 * config.n_embd, bias=config.bias)
 
         # output projection
-        self.c_proj = nn.Linear(config.embed_dim, config.embed_dim, bias=config.bias)
+        self.c_proj = nn.Linear(config.n_embd, config.n_embd, bias=config.bias)
 
         # regularization
         self.attn_dropout = nn.Dropout(config.dropout)
         self.resid_dropout = nn.Dropout(config.dropout)
         self.n_head = config.n_head
-        self.n_embd = config.embed_dim
+        self.n_embd = config.n_embd
         self.dropout = config.dropout
 
         # flash attention make GPU go brrrrr but support is only in PyTorch >= 2.0
@@ -212,9 +212,9 @@ class Block(nn.Module):
 
     def __init__(self, config, use_flash: bool = True):
         super().__init__()
-        self.ln_1 = LayerNorm(config.embed_dim, bias=config.bias)
+        self.ln_1 = LayerNorm(config.n_embd, bias=config.bias)
         self.attn = CausalSelfAttention(config, use_flash=use_flash)
-        self.ln_2 = LayerNorm(config.embed_dim, bias=config.bias)
+        self.ln_2 = LayerNorm(config.n_embd, bias=config.bias)
         self.mlp = MLP(config)  # end def __init__
     # end __init__
 

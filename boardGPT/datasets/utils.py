@@ -22,7 +22,7 @@ from typing import Tuple, List, Union
 import numpy as np
 
 
-def load_othello_dataset(
+def load_othello_data_files(
         data_dir: str,
         split: str,
         data_filename: str,

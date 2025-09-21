@@ -21,7 +21,7 @@ import numpy as np
 from typing import List, Tuple, Dict, Optional, Any
 import sys
 
-from boardGPT.datasets.utils import load_othello_dataset
+from boardGPT.datasets.utils import load_othello_data_files
 from boardGPT.games.othello import OthelloGame, create_id_to_move_mapping, create_move_mapping
 from boardGPT.validation.metrics import is_valid_game_sequence
 
@@ -55,7 +55,7 @@ def get_errors(
                              - 'valid_moves': List of valid moves that could have been made
     """
     # Load the dataset
-    sequences: List[List[int]] = load_othello_dataset(
+    sequences: List[List[int]] = load_othello_data_files(
         data_dir=data_dir,
         split=split,
         data_filename=data_filename,

@@ -15,9 +15,11 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 
-from .utils import load_othello_dataset
+from .game_dataset import GameDataset
+from .utils import load_othello_data_files
 
 __all__ = [
-    "load_othello_dataset"
+    "GameDataset",
+    "load_othello_data_files"
 ]
 

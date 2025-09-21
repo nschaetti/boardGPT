@@ -1,5 +1,5 @@
 """
-Copyright (C) 2025 boardGPT Contributors
+Copyright (C) 2025 Nils Schaetti
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -19,6 +19,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 import os
 import pickle
 import random
+import glob
 
 import torch
 from torch.utils.data import Dataset
@@ -72,9 +73,6 @@ class GameDataset(Dataset):
     # region PUBLIC
 
     def load_data(self):
-        # Log
-        print(f"Loading {self.split} data into memory...")
-
         # Data dir for the specified split (train or val)
         data_dir = os.path.join(self.data_dir, self.split)
 
@@ -82,7 +80,6 @@ class GameDataset(Dataset):
         pattern = "*.bin"
 
         # Find all matching bin files
-        import glob
         bin_files = glob.glob(os.path.join(data_dir, pattern))
 
         if not bin_files:
@@ -94,7 +91,6 @@ class GameDataset(Dataset):
             )  # end if
         else:
             # Load all bin files and combine their data
-            print(f"Found {len(bin_files)} bin files for {self.split} split")
             game_sequences = []
             for bin_file in bin_files:
                 print(f"Loading {bin_file}...")
@@ -104,11 +100,6 @@ class GameDataset(Dataset):
                 # end with
             # end for
         # end if
-
-        # Keep only the necessary sequences
-
-        # Concatenate game sequences
-        print(f"Total sequences for {self.split}: {len(game_sequences)}")
 
         # Store in the appropriate global variable
         return game_sequences  # end def load_data
