@@ -64,7 +64,7 @@ def main():
     othello_generate_parser.add_argument("--num-games", type=int, required=True, help="Othello game to generate")
     othello_generate_parser.add_argument("--seed", default=42, help="Othello game seed")
     othello_generate_parser.add_argument("--output", required=True, help="Path to the output .bin file")
-    othello_generate_parser.add_argument("--chunk-size", default=None, help="Size of chunks (how many samples)")
+    othello_generate_parser.add_argument("--chunk-size", type=int, default=None, help="Size of chunks (how many samples)")
     othello_generate_parser.set_defaults(func=othello_generate)
     
     # Othello play

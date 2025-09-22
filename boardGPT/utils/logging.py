@@ -29,6 +29,18 @@ console = Console(theme=CUSTOM_THEME)
 install_rich_traceback(show_locals=False, width=None, word_wrap=True)
 
 
+def train_log(message: str, **kwargs: Any) -> None:
+    """
+    Log message to console for training.
+
+    Args:
+        message (str): message to log
+        **kwargs (Any): extra arguments
+    """
+    console.log(f"[bold purple]TRAIN:[/bold purple]{message}", **kwargs)
+# end train_log
+
+
 def info(message: str, **kwargs: Any) -> None:
     """
     Log an informational message.
@@ -37,7 +49,7 @@ def info(message: str, **kwargs: Any) -> None:
         message: The message to log
         **kwargs: Additional arguments to pass to console.print
     """
-    console.print(f"[info]INFO:[/info] {message}", **kwargs)
+    console.log(f"[info]INFO:[/info] {message}", **kwargs)
 
 
 def warning(message: str, **kwargs: Any) -> None:
@@ -48,7 +60,7 @@ def warning(message: str, **kwargs: Any) -> None:
         message: The message to log
         **kwargs: Additional arguments to pass to console.print
     """
-    console.print(f"[warning]WARNING:[/warning] {message}", **kwargs)
+    console.log(f"[warning]WARNING:[/warning] {message}", **kwargs)
 
 
 def error(message: str, **kwargs: Any) -> None:
@@ -59,7 +71,7 @@ def error(message: str, **kwargs: Any) -> None:
         message: The message to log
         **kwargs: Additional arguments to pass to console.print
     """
-    console.print(f"[error]ERROR:[/error] {message}", **kwargs)
+    console.log(f"[error]ERROR:[/error] {message}", **kwargs)
 
 
 def debug(message: str, **kwargs: Any) -> None:
@@ -70,7 +82,7 @@ def debug(message: str, **kwargs: Any) -> None:
         message: The message to log
         **kwargs: Additional arguments to pass to console.print
     """
-    console.print(f"[debug]DEBUG:[/debug] {message}", **kwargs)
+    console.log(f"[debug]DEBUG:[/debug] {message}", **kwargs)
 
 
 def success(message: str, **kwargs: Any) -> None:
@@ -81,7 +93,7 @@ def success(message: str, **kwargs: Any) -> None:
         message: The message to log
         **kwargs: Additional arguments to pass to console.print
     """
-    console.print(f"[success]SUCCESS:[/success] {message}", **kwargs)
+    console.log(f"[success]SUCCESS:[/success] {message}", **kwargs)
 
 
 def print_exception(show_locals: bool = False, **kwargs: Any) -> None:

@@ -52,7 +52,7 @@ from torch.distributed import init_process_group, destroy_process_group
 from boardGPT.datasets import load_othello_data_files, GameDataset
 from boardGPT.models import GPTConfig, GPT
 from boardGPT.validation.metrics import is_valid_game_sequence, invalid_move_rate
-from boardGPT.utils import info, error, warning
+from boardGPT.utils import info, error, warning, train_log
 
 # -----------------------------------------------------------------------------
 # Configuration handling
@@ -101,6 +101,13 @@ class TrainingConfig:
                                          If None, an empty dictionary is used.
         """
         self._config = config_dict or {}
+
+    def to_dict(self) -> Dict[str, Any]:
+        """
+        Serialize the configuration to a dictionary.
+        """
+        return self._config
+    # end def to_dict
         
     @classmethod
     def from_yaml(cls, config_path):
@@ -117,7 +124,6 @@ class TrainingConfig:
             with open(config_path, 'r') as f:
                 config_dict = yaml.safe_load(f)
             # end with
-            print(f"Loaded configuration from {config_path}")
             return cls(config_dict)
         except FileNotFoundError:
             print(f"Configuration file {config_path} not found. Using default configuration.")
@@ -248,7 +254,7 @@ def setup_training_environment(config):
     master_process = True
     seed_offset = 0
     gradient_accumulation_steps = config['gradient_accumulation_steps']
-    device = config['device']
+    device = config.device
 
     if ddp:
         # Initialize the distributed process group
@@ -283,8 +289,8 @@ def setup_training_environment(config):
     torch.manual_seed(1337 + seed_offset)
     
     # Enable TF32 precision on CUDA devices (faster and usually sufficient precision)
-    torch.backends.cuda.matmul.allow_tf32 = True
-    torch.backends.cudnn.allow_tf32 = True
+    torch.backends.cudnn.conv.fp32_precision = 'tf32'
+    torch.backends.cuda.matmul.fp32_precision = 'ieee'
     
     # Determine device type for later use
     device_type = 'cuda' if 'cuda' in device else 'cpu'
@@ -513,8 +519,6 @@ def initialize_model(config, device, ckpt_path=None, start_iter=None):
     
     # Check if a specific checkpoint path is provided via command line
     if ckpt_path is not None:
-        print(f"Loading checkpoint from specified path: {ckpt_path}")
-        
         # Load the checkpoint
         checkpoint = torch.load(ckpt_path, map_location=device)
         checkpoint_model_args = checkpoint['model_args']
@@ -546,16 +550,12 @@ def initialize_model(config, device, ckpt_path=None, start_iter=None):
         # Set iteration number - use command line value if provided, otherwise use checkpoint value
         if start_iter is not None:
             iter_num = start_iter
-            print(f"Starting from iteration {iter_num} as specified by --num-iter")
         else:
             iter_num = checkpoint['iter_num']
-            print(f"Resuming from iteration {iter_num} from checkpoint")
+        # end if
         
         best_val_loss = checkpoint['best_val_loss']
     else:
-        # Initialize a new model from scratch
-        print("Initializing a new model from scratch")
-
         # Create the model
         model_args['vocab_size'] = vocab_size if vocab_size is not None else 50304
         gptconf = GPTConfig(**model_args)
@@ -575,10 +575,17 @@ def initialize_model(config, device, ckpt_path=None, start_iter=None):
 # end initialize_model
 
 @torch.no_grad()
-def estimate_loss(model, ctx, config, device, device_type):
+def estimate_loss(
+        model,
+        iter_data,
+        ctx,
+        config,
+        device,
+        device_type
+):
     """
-    Estimate loss over train and validation splits using multiple batches.
-    Also calculates invalid move ratio for validation split if board_game is enabled.
+    Estimate loss overtrain and validation splits using multiple batches.
+    Also calculates an invalid move ratio for validation split if board_game is enabled.
     
     Args:
         model: The model to evaluate
@@ -598,11 +605,13 @@ def estimate_loss(model, ctx, config, device, device_type):
         
         for k in range(config['eval_iters']):
             # Use the appropriate data loading function based on the configuration
-            if config.get('board_game'):
-                X, Y = get_board_batch(split, config, device, device_type)
-            else:
-                X, Y = get_batch(split, config, device, device_type)
-            # end if
+            # if config.get('board_game'):
+            #     X, Y = get_board_batch(split, config, device, device_type)
+            # else:
+            #     X, Y = get_batch(split, config, device, device_type)
+            # # end if
+            X, Y = next(iter_data)
+            X, Y = X.to(device), Y.to(device)
 
             with ctx:
                 logits, loss = model(X, Y)
@@ -620,18 +629,18 @@ def estimate_loss(model, ctx, config, device, device_type):
             # )
         # end for
 
-        if split == 'val':
-            print(f"Computing invalid move ratio on {split} split...")
-            inv_rate_ratio = invalid_move_rate(
-                model=model,
-                data_dir=config.data_dir,
-                split=split,
-                data_filename="",
-                device=device,
-                num_samples=10000
-            )
-            out['IMR'] = inv_rate_ratio
-        # end if
+        # if split == 'val':
+        #     print(f"Computing invalid move ratio on {split} split...")
+        #     inv_rate_ratio = invalid_move_rate(
+        #         model=model,
+        #         data_dir=config.data_dir,
+        #         split=split,
+        #         data_filename="",
+        #         device=device,
+        #         num_samples=10000
+        #     )
+        #     out['IMR'] = inv_rate_ratio
+        # # end if
         
         out[split] = losses.mean()
     # end for
@@ -666,7 +675,12 @@ def get_lr(it, config):
     coeff = 0.5 * (1.0 + math.cos(math.pi * decay_ratio))  # Coeff ranges 0..1
     return config['min_lr'] + coeff * (config['learning_rate'] - config['min_lr'])
 
-def setup_optimizer(model, config, device_type, checkpoint=None):
+def setup_optimizer(
+        model: GPT,
+        config,
+        device_type,
+        checkpoint=None
+):
     """
     Set up the optimizer for training.
     
@@ -682,22 +696,22 @@ def setup_optimizer(model, config, device_type, checkpoint=None):
     """
     # Initialize a GradScaler for mixed precision training
     # If enabled=False (not using float16), scaler is a no-op
-    scaler = torch.cuda.amp.GradScaler(enabled=(config['dtype'] == 'float16'))
-    
+    scaler = torch.amp.GradScaler(device=device_type)
+
     # Set up the optimizer
-    optimizer = model.configure_optimizers(
+    optimizer, num_decay_params, num_nodecay_params = model.configure_optimizers(
         config['weight_decay'], 
         config['learning_rate'], 
         (config['beta1'], config['beta2']), 
         device_type
     )
-    
+
     # Load optimizer state if checkpoint is provided
     if checkpoint is not None:
         optimizer.load_state_dict(checkpoint['optimizer'])
     # end if
     
-    return optimizer, scaler
+    return optimizer, scaler, num_decay_params, num_nodecay_params
 # end def setup_optimizer
 
 def save_checkpoint(
@@ -760,27 +774,33 @@ def main():
     
     # Load configuration from YAML file
     # config = load_config(args.config)
+    info(f"Loading config file {args.config}")
     config = TrainingConfig.from_yaml(args.config)
-    print(config._config)
+
     # Add data directory from command line arguments to the configuration
     config.data_dir = args.data_dir
     info(f"Using data directory: {config.data_dir}")
     
     # Set up the training environment
+    info(f"Initialize environment")
     ddp, master_process, seed_offset, ddp_world_size, ddp_local_rank, device, device_type, ctx, gradient_accumulation_steps = setup_training_environment(config)
     
     # Initialize the model
+    info(f"Initializing model")
     model, last_iter_num, best_val_loss, model_args = initialize_model(config, device, args.ckpt, args.num_iter)
-    
+
     # Set up the optimizer and gradient scaler
-    optimizer, scaler = setup_optimizer(model, config, device_type)
-    
+    info(f"Initializing optimizer")
+    optimizer, scaler, num_decay_params, num_nodecay_params = setup_optimizer(model, config, device_type)
+    info(f"# decay params: {num_decay_params}")
+    info(f"# nodecay: {num_nodecay_params}")
+
     # Compile the model if requested (requires PyTorch 2.0+)
     if config['compile']:
         info("compiling the model... (takes a ~minute)")
         model = torch.compile(model)
     # end if
-    
+
     # Wrap model into DDP container for distributed training
     if ddp:
         model = DDP(
@@ -794,7 +814,7 @@ def main():
         wandb.init(
             project=config['wandb_project'],
             name=config['wandb_run_name'],
-            config=config
+            config=config.to_dict()
         )
     # end if
     
@@ -806,8 +826,11 @@ def main():
     #     X, Y = get_batch('train', config, device, device_type)  # Fetch the very first batch for text
     # # end if
     dataloader = get_dataloader(split="train", config=config)
+    val_dataloader = get_dataloader(split="val", config=config)
+    val_data_iter = infinite_loader(val_dataloader)
     data_iter = infinite_loader(dataloader)
     X, Y = next(data_iter)
+    X, Y = X.to(device), Y.to(device)
 
     t0 = time.time()
     local_iter_num = 0  # Number of iterations in the lifetime of this process
@@ -815,7 +838,7 @@ def main():
     running_mfu = -1.0
     
     # Main training loop
-    for iter_num in range(last_iter_num, config['n_iter'] + 1):
+    for iter_num in range(last_iter_num, last_iter_num + args.num_iter + 1):
         # Determine and set the learning rate for this iteration
         lr = get_lr(iter_num, config) if config['decay_lr'] else config['learning_rate']
         for param_group in optimizer.param_groups:
@@ -824,9 +847,19 @@ def main():
         
         # Evaluate the loss on train/val sets and write checkpoints
         if iter_num % config['eval_interval'] == 0 and master_process:
-            losses = estimate_loss(model, ctx, config, device, device_type)
-            print(
-                f"step {iter_num}: train loss {losses['train']:.4f}, val loss {losses['val']:.4f}, IMR {losses['IMR']*100:.4f}"
+            losses = estimate_loss(
+                model,
+                val_data_iter,
+                ctx,
+                config,
+                device,
+                device_type
+            )
+            # print(
+            #     f"step {iter_num}: train loss {losses['train']:.4f}, val loss {losses['val']:.4f}, IMR {losses['IMR']*100:.4f}"
+            # )
+            train_log(
+                f"step {iter_num}: train loss {losses['train']:.4f}, val loss {losses['val']:.4f}"
             )
             
             # Log to wandb if enabled
@@ -880,6 +913,7 @@ def main():
             #     X, Y = get_batch('train', config, device, device_type)
             # # end if
             X, Y = next(data_iter)
+            X, Y = X.to(device), Y.to(device)
             
             # Backward pass, with gradient scaling if training in fp16
             scaler.scale(loss).backward()
@@ -914,7 +948,7 @@ def main():
                 running_mfu = mfu if running_mfu == -1.0 else 0.9*running_mfu + 0.1*mfu
             # end if
             
-            print(f"iter {iter_num}: loss {lossf:.4f}, time {dt*1000:.2f}ms, mfu {running_mfu*100:.2f}%")
+            train_log(f"iter {iter_num:04d}: loss {lossf:02.4f}, time {dt*1000:05.2f}ms, mfu {running_mfu*100:04.2f}%")
 
             if config['wandb_log'] and master_process:
                 wandb.log({

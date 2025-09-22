@@ -67,6 +67,18 @@ def save_games(
 # end save_games
 
 
+def _chunk_file_path(
+        output:str,
+        chunk_counter: int
+):
+    """
+    Chunk file path.
+    """
+    chunk_filename = f"othello-synthetic-train_{chunk_counter:05d}.bin"
+    return os.path.join(output, chunk_filename)
+# end def _chunk_file_path
+
+
 def othello_generate(
         args: argparse.Namespace,
 ):
@@ -122,15 +134,11 @@ def othello_generate(
 
             # If we're saving in chunks and have reached the chunk size, save and clear the games list
             if save_in_chunks and len(games) >= args.chunk_size:
-                # Get the base filename and extension
-                base_name, ext = os.path.splitext(args.output)
-
                 # Create the chunk filename
                 chunk_counter += 1
-                chunk_filename = f"{base_name}_{chunk_counter}{ext}"
 
                 # Save the chunk
-                save_games(games, chunk_filename)
+                save_games(games, _chunk_file_path(args.output, chunk_counter))
 
                 # Clear the game list to free memory
                 games = []
@@ -143,9 +151,7 @@ def othello_generate(
         if save_in_chunks:
             # Save the final chunk
             chunk_counter += 1
-            base_name, ext = os.path.splitext(args.output)
-            chunk_filename = f"{base_name}_{chunk_counter}{ext}"
-            save_games(games, chunk_filename)
+            save_games(games, _chunk_file_path(args.output, chunk_counter))
         else:
             # Save all games to a single file
             save_games(games, args.output)

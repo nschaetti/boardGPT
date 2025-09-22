@@ -19,7 +19,7 @@ from .models import load_safetensors
 from .viz import plot_attention_matrix, plot_heads_attention, show_linear_probe_samples
 from .logging import (
     info, warning, error, debug, success,
-    print_exception, log_exception, console
+    print_exception, log_exception, console, train_log
 )
 
 __all__ = [
@@ -28,5 +28,5 @@ __all__ = [
     "plot_heads_attention",
     "show_linear_probe_samples",
     "info", "warning", "error", "debug", "success",
-    "print_exception", "log_exception", "console"
+    "print_exception", "log_exception", "console", "train_log"
 ]
