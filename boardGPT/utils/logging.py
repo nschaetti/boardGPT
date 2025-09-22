@@ -29,9 +29,21 @@ console = Console(theme=CUSTOM_THEME)
 install_rich_traceback(show_locals=False, width=None, word_wrap=True)
 
 
+def eval_log(message: str, **kwargs: Any) -> None:
+    """
+    Log a message to console for evaluation.
+
+    Args:
+        message (str): message to log
+        **kwargs (Any): extra arguments
+    """
+    console.log(f"[bold magenta]EVAL:[/bold magenta]{message}", **kwargs)
+# end def eval_log
+
+
 def train_log(message: str, **kwargs: Any) -> None:
     """
-    Log message to console for training.
+    Log a message to console for training.
 
     Args:
         message (str): message to log

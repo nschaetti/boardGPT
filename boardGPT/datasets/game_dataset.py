@@ -20,10 +20,11 @@ import os
 import pickle
 import random
 import glob
-from typing import List
+from typing import List, Tuple, Dict
 
 import numpy as np
 import torch
+from seaborn._core.moves import Move
 from torch.utils.data import Dataset
 
 
@@ -77,7 +78,7 @@ class GameDataset(Dataset):
 
     # region PUBLIC
 
-    def load_data(self):
+    def load_data(self) -> Tuple[List[np.array], Dict, Dict]:
         # Data dir for the specified split (train or val)
         data_dir = os.path.join(self.data_dir, self.split)
 
@@ -128,6 +129,52 @@ class GameDataset(Dataset):
         # Store in the appropriate global variable
         return game_sequences, stoi, itos
     # end def load_data
+
+    # Get a raw sequence
+    def get_sequence(self, idx: int) -> List[str]:
+        """
+        Get a sequence as a list of strings.
+
+        Args:
+            idx (int): index of a sequence
+        """
+        game_sequences: np.bytes_ = self.data[idx]
+        return [s.decode() for s in game_sequences]
+    # end def get_sequence
+
+    # Transform to str-move
+    def to_moves(self, moves_i: Tuple[List[int], torch.LongTensor]) -> List[str]:
+        """
+        Transform a sequence of moves to a list of moves.
+
+        Args:
+            moves_i (List[int]): list of moves
+
+        Returns:
+            List[str]: list of moves
+        """
+        if type(moves_i) == list:
+            return [self.itos[mi] for mi in moves_i if moves_i != self.padding_int]
+        elif type(moves_i) == torch.Tensor:
+            return [self.itos[mi] for mi in moves_i.tolist() if moves_i != self.padding_int]
+        else:
+            raise NotImplementedError
+        # end if
+    # end def to_moves
+
+    # Transform to an int-move
+    def to_indices(self, moves: List[str]) -> List[int]:
+        """
+        Transform a sequence of moves to a list of indices.
+
+        Args:
+            moves (List[str]): list of moves
+
+        Returns:
+            List[int]: list of indices
+        """
+        return [self.stoi[ms] for ms in moves]
+    # end def to_indices
 
     # endregion PUBLIC
 

@@ -7,6 +7,7 @@ out_dir: 'out'                  # Output directory for checkpoints and logs
 eval_interval: 20             # How often to evaluate the model
 log_interval: 1                 # How often to log training progress
 eval_iters: 4                 # Number of batches to use for evaluation
+imr_iters: 100
 eval_only: false                # If True, script exits right after the first eval
 always_save_checkpoint: true    # If True, always save a checkpoint after each eval
 

@@ -52,7 +52,7 @@ from torch.distributed import init_process_group, destroy_process_group
 from boardGPT.datasets import load_othello_data_files, GameDataset
 from boardGPT.models import GPTConfig, GPT
 from boardGPT.validation.metrics import is_valid_game_sequence, invalid_move_rate
-from boardGPT.utils import info, error, warning, train_log
+from boardGPT.utils import info, error, warning, train_log, eval_log
 
 # -----------------------------------------------------------------------------
 # Configuration handling
@@ -601,15 +601,10 @@ def estimate_loss(
     model.eval()
     
     for split in ['train', 'val']:
-        losses = torch.zeros(config['eval_iters'])
+        losses = torch.zeros(config.eval_iters)
         
-        for k in range(config['eval_iters']):
+        for k in range(config.eval_iters):
             # Use the appropriate data loading function based on the configuration
-            # if config.get('board_game'):
-            #     X, Y = get_board_batch(split, config, device, device_type)
-            # else:
-            #     X, Y = get_batch(split, config, device, device_type)
-            # # end if
             X, Y = next(iter_data)
             X, Y = X.to(device), Y.to(device)
 
@@ -619,28 +614,18 @@ def estimate_loss(
 
             # Keep loss
             losses[k] = loss.item()
-            
-            # Calculate invalid move ratio for validation split with board game
-            # invalid_move_ratios[k] = calculate_invalid_move_ratio(
-            #     model=model,
-            #     split=split,
-            #     config=config,
-            #     device=device
-            # )
         # end for
 
-        # if split == 'val':
-        #     print(f"Computing invalid move ratio on {split} split...")
-        #     inv_rate_ratio = invalid_move_rate(
-        #         model=model,
-        #         data_dir=config.data_dir,
-        #         split=split,
-        #         data_filename="",
-        #         device=device,
-        #         num_samples=10000
-        #     )
-        #     out['IMR'] = inv_rate_ratio
-        # # end if
+        if split == 'val':
+            eval_log(f"Computing invalid move ratio on {split} split...")
+            inv_rate_ratio = invalid_move_rate(
+                model=model,
+                iter=iter_data,
+                device=device,
+                num_samples=config.imr_iters
+            )
+            out['IMR'] = inv_rate_ratio
+        # end if
         
         out[split] = losses.mean()
     # end for
@@ -804,7 +789,7 @@ def main():
     # Wrap model into DDP container for distributed training
     if ddp:
         model = DDP(
-            model,
+            module=model,
             device_ids=[ddp_local_rank] if ddp_local_rank is not None else None
         )
     # end if
@@ -820,11 +805,6 @@ def main():
     
     # Training loop initialization
     # Use the appropriate data loading function based on the configuration
-    # if config.get('board_game'):
-    #     X, Y = get_board_batch('train', config, device, device_type)  # Fetch the very first batch for board game
-    # else:
-    #     X, Y = get_batch('train', config, device, device_type)  # Fetch the very first batch for text
-    # # end if
     dataloader = get_dataloader(split="train", config=config)
     val_dataloader = get_dataloader(split="val", config=config)
     val_data_iter = infinite_loader(val_dataloader)
@@ -847,18 +827,19 @@ def main():
         
         # Evaluate the loss on train/val sets and write checkpoints
         if iter_num % config['eval_interval'] == 0 and master_process:
+            # Estimate loss
             losses = estimate_loss(
-                model,
-                val_data_iter,
-                ctx,
-                config,
-                device,
-                device_type
+                model=model,
+                iter_data=val_data_iter,
+                ctx=ctx,
+                config=config,
+                device=device,
+                device_type=device_type
             )
             # print(
             #     f"step {iter_num}: train loss {losses['train']:.4f}, val loss {losses['val']:.4f}, IMR {losses['IMR']*100:.4f}"
             # )
-            train_log(
+            eval_log(
                 f"step {iter_num}: train loss {losses['train']:.4f}, val loss {losses['val']:.4f}"
             )
             
@@ -907,11 +888,6 @@ def main():
             
             # Immediately async prefetch next batch while model is doing the forward pass on the GPU
             # Use the appropriate data loading function based on the configuration
-            # if config.get('board_game'):
-            #     X, Y = get_board_batch('train', config, device, device_type)
-            # else:
-            #     X, Y = get_batch('train', config, device, device_type)
-            # # end if
             X, Y = next(data_iter)
             X, Y = X.to(device), Y.to(device)
             

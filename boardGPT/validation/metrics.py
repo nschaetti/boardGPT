@@ -133,14 +133,9 @@ def is_valid_game_sequence(game: List[str]) -> bool:
 # end def is_valid
 
 
-_IMR_sequences = None
-
-
 def invalid_move_rate(
         model,
-        data_dir: str,
-        split: str = "val",
-        data_filename: str = "val.pkl",
+        iter,
         num_samples: Optional[int] = 1000,
         temperature: float = 1.0,
         top_k: int = None,
@@ -153,9 +148,7 @@ def invalid_move_rate(
     
     Args:
         model: The model to evaluate
-        data_dir (str): Directory containing the dataset
-        split (str): Dataset split to use ("train" or "val")
-        data_filename (str): Filename for the dataset
+        iter: The number of iterations to evaluate
         num_samples (int): Number of samples to evaluate
         temperature (float): Temperature for sampling
         top_k (int): Top-k sampling parameter
@@ -166,92 +159,23 @@ def invalid_move_rate(
     Returns:
         float: Average rate of invalid moves
     """
-    global _IMR_sequences
-
-    # Load the dataset
-    if _IMR_sequences is None:
-        sequences: List[List[int]] = load_othello_data_files(
-            data_dir=data_dir,
-            split=split,
-            data_filename=data_filename,
-            flatten=False,
-            log=log
-        )
-        _IMR_sequences = sequences  # end if
-    else:
-        sequences: List[List[int]] = _IMR_sequences  # end else
-    # end if
-    
-    # Randomly sample sequences
-    if num_samples is not None:
-        # Ensure we don't try to sample more sequences than available
-        num_samples = min(num_samples, len(sequences))
-        sampled_sequences = random.sample(sequences, num_samples)  # end if
-    else:
-        sampled_sequences = sequences  # end else
-    # end if
-    
-    # Get the mapping from ID to move notation
-    id_to_move = create_id_to_move_mapping()
-    
     total_invalid = 0
     total_moves = 0
 
-    # Process each sequence without progress bar
-    for seq_i, sequence in enumerate(sampled_sequences):
-        if log:
-            print(f"seq_i: {seq_i}")  # end if
-        # end if
-
-        # Convert sequence to list if it's not already
-        if not isinstance(sequence, list):
-            sequence = sequence.tolist()  # end if
-        # end if
-
-        # Choose a random length for the opening moves (max 59 to have at least one move to predict)
-        max_length: int = min(59, len(sequence) - 1)
-        if max_length <= 0:
-            continue  # Skip sequences that are too short  # end if
-        # end if
-
-        # Length of the opening sequence
-        opening_length: int = random.randint(1, max_length)
-
-        # Get opening moves
-        opening_moves: List[int] = sequence[:opening_length]
-
-        # Convert opening moves from IDs to move notation
-        opening_moves_notation = [id_to_move[move] for move in opening_moves if move != 0]
+    # Process each sequence without a progress bar
+    for seq_i in range(num_samples):
+        # Get batch
+        X, Y = next(iter)
+        X = X.to(device)
 
         # Generate the next move using the model
-        generated_moves: List[str] = model.generate_moves(
-            sequence=opening_moves_notation,
-            max_new_tokens=1,
-            temperature=temperature,
-            top_k=top_k,
-            device=torch.device(device)
-        )
+        with torch.no_grad():
+            logits = model(X)[0]
+        # end with
 
-        # Get the first generated move
-        if generated_moves and len(generated_moves) > 0:
-            # Check if the generated move is valid using the original is_valid function
-            if not is_valid_game_sequence(generated_moves):
-                total_invalid += 1  # end if
-            # end if
-
-            # Alternatively, we could use the new is_valid_game_sequence function:
-            # game_sequence = opening_moves_notation + [generated_move_notation]
-            # try:
-            #     if not is_valid_game_sequence(game_sequence):
-            #         total_invalid += 1
-            # except ValueError as e:
-            #     # If an error is raised for a move before the last one, log it but don't count it
-            #     # as an invalid move since the issue is with the dataset, not the model's prediction
-            #     print(f"Warning: {e}")
-            # # end try
-
-            total_moves += 1  # end if
-        # end if
+        # For each sequence
+        #for bi in range(logits.size(0)):
+        # TO COMPLETE
     # end for
     
     # Compute the invalid move rate
