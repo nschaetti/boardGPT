@@ -15,16 +15,18 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 
+# Imports
+from typing import Union, List
 from boardGPT.games.othello.othello_simulator import OthelloGame
 from boardGPT.games.othello.othello_utils import verify_game
 
-def othello(moves_str: str) -> OthelloGame:
+
+def othello(moves_str: Union[str, List[str]]) -> OthelloGame:
     """
     Create an OthelloGame object from a string of moves.
     
     Args:
-        moves_str (str): A string of moves in standard notation, separated by spaces or commas
-                         (e.g., "d3 c4 e3" or "d3,c4,e3")
+        moves_str (Union[str, List[str]]): list of moves as a string or list of strings
     
     Returns:
         OthelloGame: An OthelloGame object with the moves applied
@@ -33,12 +35,17 @@ def othello(moves_str: str) -> OthelloGame:
         ValueError: If the move sequence is not possible (contains invalid moves)
     """
     # Parse the input string into a list of moves
-    if ',' in moves_str:
-        # Handle comma-separated moves
-        moves = [move.strip() for move in moves_str.split(',')]
+    if isinstance(moves_str, str):
+        if ',' in moves_str:
+            # Handle comma-separated moves
+            moves = [move.strip() for move in moves_str.split(',')]
+        else:
+            # Handle space-separated moves
+            moves = [move.strip() for move in moves_str.split()]
+        # end if
     else:
-        # Handle space-separated moves
-        moves = [move.strip() for move in moves_str.split()]
+        moves = moves_str
+    # end if
     
     # Remove any empty moves
     moves = [move for move in moves if move]
@@ -48,9 +55,11 @@ def othello(moves_str: str) -> OthelloGame:
     
     if not is_valid:
         raise ValueError(f"Invalid move sequence. The following moves are invalid: {', '.join(invalid_moves)}")
+    # end if
     
     # Create an OthelloGame object with the moves applied
     game = OthelloGame.load_moves(moves)
     
     return game
+# end othello
 

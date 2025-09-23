@@ -154,9 +154,9 @@ class GameDataset(Dataset):
             List[str]: list of moves
         """
         if type(moves_i) == list:
-            return [self.itos[mi] for mi in moves_i if moves_i != self.padding_int]
+            return [self.itos[mi].decode() for mi in moves_i if mi != self.padding_int]
         elif type(moves_i) == torch.Tensor:
-            return [self.itos[mi] for mi in moves_i.tolist() if moves_i != self.padding_int]
+            return [self.itos[mi].decode() for mi in moves_i.tolist() if mi != self.padding_int]
         else:
             raise NotImplementedError
         # end if

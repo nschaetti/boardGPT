@@ -80,10 +80,28 @@ def parse_args():
         help='Path to the data directory. This directory must contain "train" and "val" folders with bin files for each split.'
     )
 
-    parser.add_argument('--ckpt', type=str, default=None,
-                        help='Path to a checkpoint file (.pt) to load weights from. If not specified, a new model will be initialized from scratch.')
-    parser.add_argument('--num-iter', type=int, default=None,
-                        help='Iteration number to start from when resuming from a checkpoint. Used with --ckpt.')
+    parser.add_argument(
+        '--ckpt',
+        type=str,
+        default=None,
+        help='Path to a checkpoint file (.pt) to load weights from. If not specified, a new model will '
+             'be initialized from scratch.'
+    )
+
+    parser.add_argument(
+        '--num-iter',
+        type=int,
+        default=None,
+        help='Iteration number to start from when resuming from a checkpoint. Used with --ckpt.'
+    )
+
+    parser.add_argument(
+        '--run-id',
+        type=str,
+        default=None,
+        help="Run ID if the run must be resumed."
+    )
+
     return parser.parse_args()
 # end def parse_args
 
@@ -126,10 +144,10 @@ class TrainingConfig:
             # end with
             return cls(config_dict)
         except FileNotFoundError:
-            print(f"Configuration file {config_path} not found. Using default configuration.")
+            error(f"Configuration file {config_path} not found. Using default configuration.")
             return cls({})
         except yaml.YAMLError as e:
-            print(f"Error parsing YAML configuration file: {e}")
+            error(f"Error parsing YAML configuration file: {e}")
             return cls({})
         # end try
     
@@ -327,7 +345,7 @@ def get_board_batch(split, config, device, device_type):
     
     # Load all data into memory if not already loaded
     if (split == 'train' and _train_data is None) or (split == 'val' and _val_data is None):
-        print(f"Loading {split} data into memory...")
+        info(f"Loading {split} data into memory...")
         
         # Data dir for the specified split (train or val)
         data_dir = os.path.join(config.data_dir, split)
@@ -341,23 +359,23 @@ def get_board_batch(split, config, device, device_type):
         
         if not bin_files:
             # If no bin files found in the specified directory, print an error message
-            print(f"Error: No bin files found in {data_dir}. Make sure the data directory contains 'train' and 'val' folders with bin files.")
+            info(f"Error: No bin files found in {data_dir}. Make sure the data directory contains 'train' and 'val' folders with bin files.")
             
             # Fallback to old method if no matching files found
             fallback_data_dir = os.path.join("data", config['board_game'])
             data_filename = config['train_data_filename'] if split == 'train' else config['val_data_filename']
             
-            print(f"Falling back to {os.path.join(fallback_data_dir, data_filename)}")
+            info(f"Falling back to {os.path.join(fallback_data_dir, data_filename)}")
             
             with open(os.path.join(fallback_data_dir, data_filename), 'rb') as f:
                 game_sequences = pickle.load(f)
             # end with
         else:
             # Load all bin files and combine their data
-            print(f"Found {len(bin_files)} bin files for {split} split")
+            info(f"Found {len(bin_files)} bin files for {split} split")
             game_sequences = []
             for bin_file in bin_files:
-                print(f"Loading {bin_file}...")
+                info(f"Loading {bin_file}...")
                 with open(bin_file, 'rb') as f:
                     sequences = pickle.load(f)
                     game_sequences.extend(sequences)
@@ -367,15 +385,15 @@ def get_board_batch(split, config, device, device_type):
         
         # Concatenate game sequences
         all_sequences = [x for sublist in game_sequences for x in sublist.tolist()]
-        print(f"Total sequences for {split}: {len(all_sequences)}")
+        info(f"Total sequences for {split}: {len(all_sequences)}")
         
         # Store in the appropriate global variable
         if split == 'train':
             _train_data = all_sequences
-            print(f"Train data loaded into memory")
+            info(f"Train data loaded into memory")
         else:
             _val_data = all_sequences
-            print(f"Validation data loaded into memory")
+            info(f"Validation data loaded into memory")
         # end if
     # end if
     
@@ -422,11 +440,11 @@ def get_batch(split, config, device, device_type):
     
     # Check if the bin file exists
     if not os.path.exists(bin_file):
-        print(f"Error: {bin_file} not found. Make sure the data directory contains 'train' and 'val' folders with bin files.")
+        error(f"Error: {bin_file} not found. Make sure the data directory contains 'train' and 'val' folders with bin files.")
         # Fallback to old method
         fallback_data_dir = os.path.join('data', config['dataset'])
         bin_file = os.path.join(fallback_data_dir, f'{split}.bin')
-        print(f"Falling back to {bin_file}")
+        error(f"Falling back to {bin_file}")
     
     # Load the data
     data = np.memmap(bin_file, dtype=np.uint16, mode='r')
@@ -520,7 +538,7 @@ def initialize_model(config, device, ckpt_path=None, start_iter=None):
     # Check if a specific checkpoint path is provided via command line
     if ckpt_path is not None:
         # Load the checkpoint
-        checkpoint = torch.load(ckpt_path, map_location=device)
+        checkpoint = torch.load(ckpt_path, map_location=device, weights_only=False)
         checkpoint_model_args = checkpoint['model_args']
         
         # Force these config attributes to be equal otherwise we can't resume training
@@ -578,10 +596,10 @@ def initialize_model(config, device, ckpt_path=None, start_iter=None):
 def estimate_loss(
         model,
         iter_data,
+        dataset,
         ctx,
         config,
-        device,
-        device_type
+        device
 ):
     """
     Estimate loss overtrain and validation splits using multiple batches.
@@ -589,6 +607,8 @@ def estimate_loss(
     
     Args:
         model: The model to evaluate
+        iter_data: The iteration data to use
+        dataset: The dataset to use
         ctx: Context manager for mixed precision
         config (TrainingConfig): Configuration object
         device (str): Device to use for tensors
@@ -621,6 +641,7 @@ def estimate_loss(
             inv_rate_ratio = invalid_move_rate(
                 model=model,
                 iter=iter_data,
+                dataset=dataset,
                 device=device,
                 num_samples=config.imr_iters
             )
@@ -704,7 +725,7 @@ def save_checkpoint(
         optimizer,
         iter_num,
         best_val_loss,
-        config,
+        config: TrainingConfig,
         model_args
 ):
     """
@@ -724,17 +745,14 @@ def save_checkpoint(
         'model_args': model_args,
         'iter_num': iter_num,
         'best_val_loss': best_val_loss,
-        'config': config,
+        'config': config.to_dict(),
     }
-    
-    print(f"saving checkpoint to {config['out_dir']}")
+
     # Save with standard name for backward compatibility
-    torch.save(checkpoint, os.path.join(config['out_dir'], 'ckpt.pt'))
-    
-    # Save with iteration number in filename
-    iter_filename = f'ckpt_iter{iter_num}.pt'
+    iter_filename = f'ckpt_iter{iter_num:04d}.pt'
+    info(f"Saving checkpoint to {os.path.join(config['out_dir'], iter_filename)}")
     torch.save(checkpoint, os.path.join(config['out_dir'], iter_filename))
-    print(f"also saved checkpoint as {iter_filename}")
+    info(f"Also saved checkpoint as {iter_filename}")
 # end save_checkpoint
 
 
@@ -796,11 +814,21 @@ def main():
     
     # Set up wandb logging if enabled
     if config['wandb_log'] and master_process:
-        wandb.init(
-            project=config['wandb_project'],
-            name=config['wandb_run_name'],
-            config=config.to_dict()
-        )
+        if args.run_id:
+            wandb.init(
+                project=config['wandb_project'],
+                name=config['wandb_run_name'],
+                id=args.run_id,
+                resume='allow',
+                config=config.to_dict()
+            )
+        else:
+            wandb.init(
+                project=config['wandb_project'],
+                name=config['wandb_run_name'],
+                config=config.to_dict()
+            )
+        # end if
     # end if
     
     # Training loop initialization
@@ -831,16 +859,14 @@ def main():
             losses = estimate_loss(
                 model=model,
                 iter_data=val_data_iter,
+                dataset=val_dataloader.dataset,
                 ctx=ctx,
                 config=config,
-                device=device,
-                device_type=device_type
+                device=device
             )
-            # print(
-            #     f"step {iter_num}: train loss {losses['train']:.4f}, val loss {losses['val']:.4f}, IMR {losses['IMR']*100:.4f}"
-            # )
+
             eval_log(
-                f"step {iter_num}: train loss {losses['train']:.4f}, val loss {losses['val']:.4f}"
+                f"step {iter_num}: train loss {losses['train']:.4f}, val loss {losses['val']:.4f}, imr {losses['IMR']:.4f}"
             )
             
             # Log to wandb if enabled
@@ -849,7 +875,7 @@ def main():
                     "iter": iter_num,
                     "val/loss": losses['val']
                 }
-                
+
                 # Log invalid move ratio if available
                 log_data["val/IMR"] = losses['IMR']
                 wandb.log(log_data)
