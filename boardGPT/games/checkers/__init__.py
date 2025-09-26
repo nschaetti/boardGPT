@@ -15,3 +15,43 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 
+from .cli import (
+    checkers_generate,
+    checkers_visualize,
+    checkers_load,
+    checkers_play,
+    checkers_convert,
+    checkers_verify
+)
+
+from .checkers_simulator import (
+    CheckersGame,
+    create_id_to_move_mapping,
+    create_move_mapping,
+    convert_ids_to_notation,
+    load_games,
+    generate_checkers_game
+)
+
+from .checkers_utils import verify_game, game_to_board, board_to_string, count_pieces, evaluate_board
+
+__all__ = [
+    "checkers_generate",
+    "checkers_visualize",
+    "checkers_load",
+    "checkers_play",
+    "checkers_convert",
+    "checkers_verify",
+    "CheckersGame",
+    "create_id_to_move_mapping",
+    "create_move_mapping",
+    "convert_ids_to_notation",
+    "load_games",
+    "generate_checkers_game",
+    "verify_game",
+    "game_to_board",
+    "board_to_string",
+    "count_pieces",
+    "evaluate_board"
+]
+

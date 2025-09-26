@@ -1,91 +1,52 @@
-# Changes Made to othello.py
+# Game Interface Implementation
 
-## Issue Description
-In othello.py, when extract image command, I want the images to be squared. So before saving, the image must be cropped to the smaller dimension to have a squared image.
+## Changes Made
 
-## Changes Implemented
+1. Created a common interface for all games:
+   - Created a new file `boardGPT/games/game_interface.py` that defines the `GameInterface` abstract base class
+   - The interface includes methods for:
+     - Getting valid moves (`get_valid_moves`, `is_valid_move`, `has_valid_moves`)
+     - Making moves (`make_move`, `make_random_move`)
+     - Coordinate conversion (`coords_to_notation`, `notation_to_coords`)
+     - Game state representation (`show`, `is_game_over`, `get_moves`)
 
-1. Added PIL Image import to handle image processing:
-   ```python
-   from PIL import Image
-   ```
+2. Modified OthelloGame to inherit from the interface:
+   - Updated imports in `othello_simulator.py` to include `GameInterface`
+   - Changed the class definition to inherit from `GameInterface`
+   - Updated the `make_random_move` method with proper docstring and type hints
 
-2. Created a new helper function `crop_to_square` that takes an image path, opens the image, crops it to make it square based on the smaller dimension, and saves it back to the same path:
-   ```python
-   def crop_to_square(image_path: str) -> None:
-       """
-       Crop an image to make it square based on the smaller dimension.
-       
-       Args:
-           image_path (str): Path to the image file
-       """
-       # Open the image
-       img = Image.open(image_path)
-       
-       # Get image dimensions
-       width, height = img.size
-       
-       # Determine the smaller dimension
-       min_dim = min(width, height)
-       
-       # Calculate cropping box (centered)
-       left = (width - min_dim) // 2
-       top = (height - min_dim) // 2
-       right = left + min_dim
-       bottom = top + min_dim
-       
-       # Crop the image
-       cropped_img = img.crop((left, top, right, bottom))
-       
-       # Save the cropped image back to the same path
-       cropped_img.save(image_path)
-   ```
+3. Updated package exports:
+   - Modified `boardGPT/games/__init__.py` to expose the new `GameInterface` class
+   - Added `OthelloGame` to the exports in `boardGPT/games/__init__.py`
 
-3. Modified the image saving process in the `extract_game_as_images` function to use the `crop_to_square` helper function after saving the images with matplotlib:
-   - For the initial board state:
-     ```python
-     # Save the initial board
-     initial_board_path = f"{output_dir}/board_initial.png"
-     plt.savefig(initial_board_path, bbox_inches='tight', pad_inches=0)
-     plt.close(fig)
-     
-     # Crop the image to make it square
-     crop_to_square(initial_board_path)
-     ```
-   
-   - For each move's board state:
-     ```python
-     # Save the board state
-     move_board_path = f"{output_dir}/board_move_{move_idx+1:03d}.png"
-     plt.savefig(move_board_path, bbox_inches='tight', pad_inches=0)
-     plt.close(fig)
-     
-     # Crop the image to make it square
-     crop_to_square(move_board_path)
-     ```
+4. Created a test script:
+   - Added `test_game_interface.py` to verify that `OthelloGame` correctly implements the interface
 
-4. Updated the docstring of the `extract_game_as_images` function to reflect that the images will be cropped to be square:
-   ```python
-   def extract_game_as_images(game_file: str, game_index: int, output_dir: str, image_size: int = 8) -> None:
-       """
-       Extract each state of an Othello game as images without borders and title.
-       The images are cropped to be square based on the smaller dimension.
-       
-       Args:
-           game_file (str): Path to the binary file containing games
-           game_index (int): Index of the game to extract
-           output_dir (str): Directory to save the images
-           image_size (int): Size of the output images in inches (default: 8)
-       """
-   ```
+5. Modified `generate_game` function to support multiple game types:
+   - Added a `game_type` parameter to specify which game to generate
+   - Created a mapping of game names to game classes
+   - Updated the function implementation to use the specified game type
+   - Added validation to check if the specified game type is supported
+   - Created a test script `test_generate_game.py` to verify the functionality
 
-## Testing
+## Benefits
 
-A test script was created to verify that the `crop_to_square` function works correctly. The test creates images with different dimensions (wide, tall, and square) and applies the `crop_to_square` function to each image. The test confirms that all images are square after cropping.
+1. **Standardization**: All game implementations will now follow a consistent interface, making it easier to work with different games.
 
-The test results show that:
-1. A wide image (initially 620x462) becomes 462x462 (cropped width to match height)
-2. A tall image (initially 465x616) becomes 465x465 (cropped height to match width)
-3. A square image (initially 542x539) becomes 539x539 (cropped to make it perfectly square)
+2. **Code Reuse**: Common functionality can be shared across different game implementations.
 
-This confirms that the implementation correctly crops images to make them square based on the smaller dimension, which satisfies the requirements specified in the issue description.
+3. **Extensibility**: New games can be added by implementing the interface, ensuring they provide all necessary methods.
+
+4. **Maintainability**: The interface clearly defines what methods each game must implement, making the codebase more maintainable.
+
+## Future Work
+
+1. Implement the interface for other games (e.g., Chess, Checkers, Go).
+   - The system is now ready to support multiple games through the `generate_game` function
+   - Need to complete the implementation of other game classes that inherit from `GameInterface`
+
+2. Consider adding more methods to the interface as needed for common game operations.
+
+3. Create utility functions that work with any game implementing the interface.
+
+4. Expand the game type mapping in `generate_game` as new game implementations are added.

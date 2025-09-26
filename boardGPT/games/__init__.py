@@ -19,12 +19,24 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 Simulators for board games.
 """
 
+from .game_interface import GameInterface
 from .othello import (
-    create_id_to_move_mapping,
-    convert_ids_to_notation
+    create_id_to_move_mapping as othello_create_id_to_move_mapping,
+    convert_ids_to_notation as othello_convert_ids_to_notation,
+    OthelloGame
+)
+from .checkers import (
+    create_id_to_move_mapping as checkers_create_id_to_move_mapping,
+    convert_ids_to_notation as checkers_convert_ids_to_notation,
+    CheckersGame
 )
 
 __all__ = [
-    "create_id_to_move_mapping",
-    "convert_ids_to_notation"
+    "GameInterface",
+    "OthelloGame",
+    "othello_create_id_to_move_mapping",
+    "othello_convert_ids_to_notation",
+    "CheckersGame",
+    "checkers_create_id_to_move_mapping",
+    "checkers_convert_ids_to_notation"
 ]

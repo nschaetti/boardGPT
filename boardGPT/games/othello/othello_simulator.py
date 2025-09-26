@@ -26,13 +26,14 @@ import random
 import numpy as np
 import pickle
 from collections import Counter
-from typing import List, Tuple, Set, Dict
+from typing import List, Tuple, Set, Dict, Optional
 from rich.text import Text
 from rich.columns import Columns
 import matplotlib.pyplot as plt
 from matplotlib.widgets import Button
 from PIL import Image
 from boardGPT.utils import console, warning, info, error
+from boardGPT.games.game_interface import GameInterface
 
 
 class OthelloBoard:
@@ -188,7 +189,7 @@ class OthelloBoard:
 # end class OthelloBoard
 
 
-class OthelloGame:
+class OthelloGame(GameInterface):
     """
     Represents an Othello game board and implements game rules.
     
@@ -201,6 +202,9 @@ class OthelloGame:
     
     Coordinates are zero-indexed, with (0,0) being the top-left corner of the board.
     Standard Othello notation is also supported, where 'a1' corresponds to (0,0).
+    
+    This class implements the GameInterface, providing a standard set of methods
+    for interacting with the game.
     """
 
     # Board size (standard Othello board is 8x8)
@@ -407,8 +411,16 @@ class OthelloGame:
         return True  # end def make_move
     # end make_move
 
-    # Make a random move
-    def make_random_move(self):
+    def make_random_move(self) -> Optional[Tuple[int, int]]:
+        """
+        Make a random valid move for the current player.
+        
+        If the current player has no valid moves, switches to the other player.
+        If neither player has valid moves (game is over), returns None.
+        
+        Returns:
+            Optional[Tuple[int, int]]: The (row, col) of the move made, or None if no move was possible
+        """
         # Get all valid moves for the current player
         valid_moves = self.get_valid_moves()
         if not valid_moves:
