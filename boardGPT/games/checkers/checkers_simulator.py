@@ -30,9 +30,11 @@ from collections import Counter
 from typing import List, Tuple, Set, Dict, Optional
 from rich.text import Text
 from rich.columns import Columns
+from rich.console import Console
 import matplotlib.pyplot as plt
 from matplotlib.widgets import Button
 from PIL import Image
+
 from boardGPT.utils import console, warning, info, error
 from boardGPT.games.game_interface import GameInterface
 
@@ -46,7 +48,7 @@ class CheckersBoard:
     
     def __init__(
             self,
-            size: int = 10,
+            size: int = 5,
             empty: int = 0,
             black: int = 1,
             white: int = 2,
@@ -58,7 +60,7 @@ class CheckersBoard:
         Initialize a new checkers board.
         
         Args:
-            size (int): Size of the board (default: 8)
+            size (int): Size of the board (default: 5)
             empty (int): Value representing an empty cell (default: 0)
             black (int): Value representing a black piece (default: 1)
             white (int): Value representing a white piece (default: 2)
@@ -111,8 +113,8 @@ class CheckersBoard:
         """
         assert 1 <= manpos <= (self.size * self.size * 2), \
             f"Manoury notation must be between 1 and {self.size * self.size * 2}, got {manpos}"
-        col = manpos % self.size
-        row = int(math.floor(manpos / self.size))
+        col = (manpos-1) % self.size
+        row = int(math.floor((manpos-1) / self.size))
         return row, col
     # end def manoury_to_coords
 
@@ -127,9 +129,97 @@ class CheckersBoard:
         Returns:
             int: Manoury
         """
-        return row * self.size + col
+        assert 0 <= row < self.size * 2, f"row must be between 0 and {self.size * 2 - 1}, got {row}"
+        assert 0 <= col < self.size, f"column must be between 0 and {self.size - 1}, got {col}"
+        return row * self.size + col + 1
     # end coords_to_manoury
-    
+
+    def board_coords_to_manoury(self, row: int, col: int) -> Optional[int]:
+        """
+        Convert board coordinates to Manoury.
+
+        Args:
+            row (int): Row
+            col (int): Column
+
+        Returns:
+            Tuple[int, int]: Manoury
+        """
+        assert 0 <= row < self.size * 2, f"row must be between 0 and {self.size * 2 - 1}, got {row}"
+        assert 0 <= col < self.size * 2, f"column must be between 0 and {self.size * 2 - 1}, got {col}"
+
+        # Empty case 1
+        if row % 2 == 0 and col % 2 == 0:
+            return None
+        # end if
+
+        # Empty case 2
+        if row % 2 == 1 and col % 2 == 1:
+            return None
+        # end if
+
+        if row % 2 == 0:
+            return row * self.size + ((col + 1) // 2)
+        else:
+            return row * self.size + ((col // 2) + 1)
+        # end if
+    # end def board_coords_to_manoury
+
+    def manoury_to_board_coords(self, manpos: int) -> Tuple[int, int]:
+        """
+        Convert Manoury to coordinates.
+
+        Args:
+            manpos (int): Manpo coordinate
+
+        Returns:
+            Tuple[int, int]: Board coordinate
+        """
+        assert 1 <= manpos <= (self.size * self.size * 2), \
+            f"Manoury notation must be between 1 and {self.size * self.size * 2}, got {manpos}"
+        row = (manpos-1) // self.size
+        col = manpos - (row * self.size)
+        if row % 2 == 0:
+            col = col * 2 - 1
+        else:
+            col = col * 2 - 2
+        # end if
+        return row, col
+    # end def manoury_to_board_coords
+
+    def board_coords_to_coords(self, row: int, col: int) -> Optional[Tuple[int, int]]:
+        """
+        Convert Board coordinates to coordinates.
+
+        Args:
+            row (int): Row
+            col (int): Column
+
+        Returns:
+            Tuple[int, int]: Board coordinate
+        """
+        manpos = self.board_coords_to_manoury(row, col)
+        if manpos is not None:
+            return self.manoury_to_coords(manpos)
+        else:
+            return None
+        # end if
+    # end def board_coords_to_coords
+
+    def is_case_playable(self, row: int, col: int) -> bool:
+        """
+        Check if a piece is playable.
+
+        Args:
+            row (int): Row
+            col (int): Column
+
+        Returns:
+            bool: True if piece is playable, False otherwise
+        """
+        return not self.board_coords_to_manoury(row, col) is None
+    # end def is_case_playable
+
     def set_piece(self, row: int, col: int, value: int):
         """
         Set a piece at the specified position.
@@ -142,10 +232,12 @@ class CheckersBoard:
         Returns:
             bool: True if successful, False otherwise
         """
-        if 0 <= row < self.size and 0 <= col < self.size:
+        if 0 <= row < self.size * 2 and 0 <= col < self.size:
             self.board[row, col] = value
             return True
+        # end if
         return False
+    # end set_piece
     
     def get_piece(self, row: int, col: int) -> int:
         """
@@ -232,6 +324,56 @@ class CheckersBoard:
             return True
         
         return False
+    # end def promote_to_king
+
+    def print(self):
+        """
+        Print the current board state.
+        """
+        # Top border
+        result = "  "
+        for col in range(self.size * 2):
+            result += f"{col} "
+        # end for
+        result += "\n"
+
+        for b_row in range(self.size * 2):
+            result += f"{b_row} "
+            for b_col in range(self.size * 2):
+                playable = self.is_case_playable(b_row, b_col)
+                if playable:
+                    row, col = self.board_coords_to_coords(b_row, b_col)
+                    piece = self.board[row, col]
+                else:
+                    piece = self.empty
+                # end if
+
+                if not playable or piece == self.empty:
+                    if (b_row + b_col) % 2 == 0:  # Light squares
+                        result += "⊡ "
+                    else:  # Dark squares
+                        result += "⊠ "
+                    # end if
+                elif piece == self.black:
+                    result += "[bold blue]○[/bold blue] "
+                elif piece == self.white:
+                    result += "[bold red]●[/bold red] "
+                elif piece == self.black_king:
+                    result += "[bold blue]♚[/bold blue] "
+                elif piece == self.white_king:
+                    result += "[bold red]♔[/bold red] "
+                # end if
+            # end for
+            result += f"{b_row}\n"
+        # end for
+
+        # Bottom border
+        result += "  "
+        for col in range(self.size * 2):
+            result += f"{col} "
+        # end for
+        console.print(result)
+    # end def print
     
     def __str__(self, last_move=None):
         """
@@ -244,35 +386,47 @@ class CheckersBoard:
             str: String representation of the board
         """
         result = "  "
-        for col in range(self.size):
-            result += f"{chr(97 + col)} "
+        for col in range(self.size * 2):
+            result += f"{col} "
         # end for
+
         result += "\n"
         
-        for row in range(self.size * 2):
-            result += f"{self.size - row} "
-            for col in range(self.size * 2):
-                piece = self.board[row, col]
-                if piece == self.empty:
-                    if (row + col) % 2 == 0:  # Light squares
-                        result += "□ "
+        for b_row in range(self.size * 2):
+            result += f"{b_row} "
+            for b_col in range(self.size * 2):
+                playable = self.is_case_playable(b_row, b_col)
+                if playable:
+                    row, col = self.board_coords_to_coords(b_row, b_col)
+                    manpos = self.coords_to_manoury(row, col)
+                    piece = self.board[row, col]
+                else:
+                    row, col = None, None
+                    manpos = None
+                    piece = self.empty
+                # end if
+
+                if not playable or piece == self.empty:
+                    if (b_row + b_col) % 2 == 0:  # Light squares
+                        result += "⊡ "
                     else:  # Dark squares
-                        result += "■ "
+                        result += "⊠ "
                     # end if
                 elif piece == self.black:
-                    result += "● "
-                elif piece == self.white:
                     result += "○ "
+                elif piece == self.white:
+                    result += "● "
                 elif piece == self.black_king:
                     result += "♚ "
                 elif piece == self.white_king:
                     result += "♔ "
                 # end if
-            result += f"{self.size - row}\n"
+            # end for
+            result += f"{b_row}\n"
         # end for
         result += "  "
-        for col in range(self.size):
-            result += f"{chr(97 + col)} "
+        for col in range(self.size * 2):
+            result += f"{col} "
         # end for
         
         return result
@@ -333,15 +487,7 @@ class CheckersGame(GameInterface):
         
         # Current jump sequence (for multiple jumps)
         self.current_jump_sequence = None
-
-    def validate_game(self) -> Tuple[bool, str]:
-        """
-        Validate the game state.
-
-        Returns:
-            Tuple[bool, str]: True if the game is valid, False otherwise, with the invalid move.
-        """
-
+    # end __init__
     
     def get_valid_moves(self) -> List[Tuple[int, int]]:
         """
@@ -362,29 +508,40 @@ class CheckersGame(GameInterface):
                 # End of jump sequence
                 self.current_jump_sequence = None
                 return []
+            # end if
+        # end if
         
         # Check for jumps first (mandatory if available)
         jumps = []
-        for row in range(self.board.size):
+        for row in range(self.board.size * 2):
             for col in range(self.board.size):
                 if ((self.current_player == self.BLACK and self.board.is_black(row, col)) or
                     (self.current_player == self.WHITE and self.board.is_white(row, col))):
                     piece_jumps = self._get_valid_jumps(row, col)
                     if piece_jumps:
                         jumps.extend(piece_jumps)
+                    # end if
+                # end if
+            # end for
+        # end for
         
         if jumps and self.forced_jump:
             return jumps
+        # end if
         
         # If no jumps or jumps are not mandatory, check for regular moves
-        for row in range(self.board.size):
+        for row in range(self.board.size * 2):
             for col in range(self.board.size):
                 if ((self.current_player == self.BLACK and self.board.is_black(row, col)) or
                     (self.current_player == self.WHITE and self.board.is_white(row, col))):
                     moves = self._get_valid_regular_moves(row, col)
                     valid_moves.extend(moves)
+                # end if
+            # end for
+        # end for
         
         return jumps if (jumps and self.forced_jump) else valid_moves
+    # end def get_valid_moves
     
     def _get_valid_regular_moves(self, row: int, col: int) -> List[Tuple[int, int]]:
         """
@@ -402,12 +559,21 @@ class CheckersGame(GameInterface):
         
         # Determine move directions based on piece type
         directions = []
+
+        # Black moves down
         if piece == self.board.black or piece == self.board.black_king:
-            directions.extend([(1, -1), (1, 1)])  # Black moves down
+            directions.extend([(1, -1), (1, 1)])
+        # end if
+
+        # White moves down
         if piece == self.board.white or piece == self.board.white_king:
-            directions.extend([(-1, -1), (-1, 1)])  # White moves up
+            directions.extend([(-1, -1), (-1, 1)])
+        # end if
+
+        # Is
         if self.board.is_king(row, col):
             directions = [(1, -1), (1, 1), (-1, -1), (-1, 1)]  # Kings move in all directions
+        # end if
         
         # Check each direction
         for dr, dc in directions:
@@ -415,8 +581,11 @@ class CheckersGame(GameInterface):
             if (0 <= new_row < self.board.size and 0 <= new_col < self.board.size and 
                 self.board.get_piece(new_row, new_col) == self.board.empty):
                 valid_moves.append((new_row, new_col))
+            # end if
+        # end for
         
         return valid_moves
+    # end def _get_valid_regular_moves
     
     def _get_valid_jumps(self, row: int, col: int) -> List[Tuple[int, int]]:
         """
@@ -581,10 +750,12 @@ class CheckersGame(GameInterface):
         valid_moves = self.get_valid_moves()
         if not valid_moves:
             return None
+        # end if
         
         move = random.choice(valid_moves)
         self.make_move(move[0], move[1])
         return move
+    # end def make_random_move
     
     def has_valid_moves(self) -> bool:
         """
@@ -710,7 +881,14 @@ class CheckersGame(GameInterface):
             # Make the move
             if not self.make_move(to_coords[0], to_coords[1]):
                 raise ValueError(f"Invalid move: {move}")
-    
+
+    def print(self):
+        """
+        Print the game state.
+        """
+        self.board.print()
+    # end def print
+
     def show(self):
         """Display the current game state."""
         console.print(f"Current player: {'Black' if self.current_player == self.BLACK else 'White'}")

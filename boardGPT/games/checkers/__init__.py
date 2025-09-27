@@ -26,6 +26,7 @@ from .cli import (
 
 from .checkers_simulator import (
     CheckersGame,
+    CheckersBoard,
     create_id_to_move_mapping,
     create_move_mapping,
     convert_ids_to_notation,
@@ -43,6 +44,7 @@ __all__ = [
     "checkers_convert",
     "checkers_verify",
     "CheckersGame",
+    "CheckersBoard",
     "create_id_to_move_mapping",
     "create_move_mapping",
     "convert_ids_to_notation",

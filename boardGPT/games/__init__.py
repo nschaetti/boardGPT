@@ -28,7 +28,8 @@ from .othello import (
 from .checkers import (
     create_id_to_move_mapping as checkers_create_id_to_move_mapping,
     convert_ids_to_notation as checkers_convert_ids_to_notation,
-    CheckersGame
+    CheckersGame,
+    CheckersBoard
 )
 
 __all__ = [
@@ -37,6 +38,7 @@ __all__ = [
     "othello_create_id_to_move_mapping",
     "othello_convert_ids_to_notation",
     "CheckersGame",
+    "CheckersBoard",
     "checkers_create_id_to_move_mapping",
     "checkers_convert_ids_to_notation"
 ]
