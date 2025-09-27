@@ -50,7 +50,7 @@ from torch.distributed import init_process_group, destroy_process_group
 
 # BoardGPT
 from boardGPT.datasets import load_othello_data_files, GameDataset
-from boardGPT.models import GPTConfig, GPT
+from boardGPT.nn import GPTConfig, GPT
 from boardGPT.validation.metrics import is_valid_game_sequence, invalid_move_rate
 from boardGPT.utils import info, error, warning, train_log, eval_log
 

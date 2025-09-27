@@ -17,6 +17,9 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 # Imports
 from typing import Union, List, Tuple, Optional, Any
+import random
+import numpy as np
+
 from boardGPT.games.othello.othello_simulator import OthelloGame
 from boardGPT.games.othello.othello_utils import verify_game as verify_othello_game
 from boardGPT.games.checkers.checkers_simulator import CheckersGame
@@ -377,6 +380,7 @@ def generate_game(
             game = GameClass.load_moves(moves)
         except ValueError as e:
             raise ValueError(f"Invalid starting moves: {e}")
+        # end try
     else:
         # Create a new game with standard starting position
         game = GameClass()
@@ -385,48 +389,28 @@ def generate_game(
     
     # Set random seed if provided
     if seed is not None:
-        import random
-        import numpy as np
         random.seed(seed)
         np.random.seed(seed)
     # end if
     
     # If full_game is True or max_length is not specified, generate moves until the game is over
     if full_game or max_length is None:
+        print(f"generating full game")
         # Continue making valid moves until the game is over
         attempt = 0
         while attempt < max_attempts:
+            print(f"attempt {attempt}/{max_attempts}")
             # Make random moves until the game is over
-            move_done = False
-            while not move_done:
+            move_done = True
+            while move_done:
                 # Make a random move
                 rnd_move = game.make_random_move()
-                move_done = rnd_move is None
+                print(f"random move {rnd_move}")
+                move_done = not rnd_move is None
             # end while
-            
-            # Validate the generated game
-            is_valid, error_message = game.validate_game()
-            if is_valid:
-                # Return the game object
-                return game
-            else:
-                # Try again with a different seed
-                attempt += 1
-                if seed is not None:
-                    # Use a different seed for each attempt
-                    import random
-                    import numpy as np
-                    random.seed(seed + attempt)
-                    np.random.seed(seed + attempt)
-                # end if
-                
-                # Reset the game with the starting moves
-                if starting_moves is not None:
-                    game = GameClass.load_moves(moves)
-                else:
-                    game = GameClass()
-                # end if
-            # end if
+            print(f"Finished")
+            # Return the game object
+            return game
         # end while
         
         # If we've reached the maximum number of attempts, raise an exception

@@ -44,7 +44,7 @@ console = Console()
 traceback.install()
 
 from boardGPT.utils import load_safetensors
-from boardGPT.models import GPTConfig, GPT
+from boardGPT.nn import GPTConfig, GPT
 from boardGPT.utils import game_to_board, show_linear_probe_samples
 from boardGPT.games import create_id_to_move_mapping
 
@@ -591,7 +591,7 @@ def main():
     # Create context manager for mixed precision training
     ctx = nullcontext() if device_type == 'cpu' else torch.amp.autocast(device_type=device_type, dtype=ptdtype)
 
-    # Setup models
+    # Setup nn
     model, linear_probe = setup_model(
         model_file=args.model_file,
         model_config_file=args.model_config_file,
@@ -642,7 +642,7 @@ def main():
         show_linear_probe_samples(train_data, num_samples=3)
     # end if
 
-    # Set models to training mode
+    # Set nn to training mode
     model.eval()  # Base model stays in eval mode
     linear_probe.train()
 

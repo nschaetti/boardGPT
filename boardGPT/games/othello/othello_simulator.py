@@ -43,7 +43,7 @@ class OthelloBoard:
             size: int = 8,
             empty: int = 0,
             black: int = 1,
-            white: int = 2  # end def __init__
+            white: int = 2
     ):
         """
         Initialize an Othello board.

@@ -14,6 +14,7 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
+import math
 
 """
 Checkers game simulator.
@@ -43,8 +44,16 @@ class CheckersBoard:
     This class handles the board representation and basic board operations.
     """
     
-    def __init__(self, size: int = 8, empty: int = 0, black: int = 1, white: int = 2, 
-                 black_king: int = 3, white_king: int = 4):
+    def __init__(
+            self,
+            size: int = 10,
+            empty: int = 0,
+            black: int = 1,
+            white: int = 2,
+            black_king: int = 3,
+            white_king: int = 4,
+            starting_pieces: int = 20
+    ):
         """
         Initialize a new checkers board.
         
@@ -55,6 +64,7 @@ class CheckersBoard:
             white (int): Value representing a white piece (default: 2)
             black_king (int): Value representing a black king piece (default: 3)
             white_king (int): Value representing a white king piece (default: 4)
+            starting_pieces (int): Number of pieces to start at per player (default: 20)
         """
         self.size = size
         self.empty = empty
@@ -62,27 +72,63 @@ class CheckersBoard:
         self.white = white
         self.black_king = black_king
         self.white_king = white_king
+        self.starting_pieces = starting_pieces
         
         # Initialize the board
-        self.board = np.zeros((size, size), dtype=int)
+        self.board = np.zeros((size * 2, size), dtype=int)
         self.history = []
         
         # Set up the initial board state
         self._setup_board()
+    # end __init__
     
     def _setup_board(self):
-        """Set up the initial board state with pieces in their starting positions."""
-        # Place black pieces in the top three rows on dark squares
-        for row in range(3):
-            for col in range(self.size):
-                if (row + col) % 2 == 1:  # Dark squares
-                    self.board[row, col] = self.black
-        
-        # Place white pieces in the bottom three rows on dark squares
-        for row in range(self.size - 3, self.size):
-            for col in range(self.size):
-                if (row + col) % 2 == 1:  # Dark squares
-                    self.board[row, col] = self.white
+        """
+        Set up the initial board state with pieces in their starting positions.
+        """
+        # Put the black pieces on the board
+        max_manoury = self.size * self.size * 2
+        for pi in range(self.starting_pieces):
+            # Set black piece
+            row, col = self.manoury_to_coords(pi + 1)
+            self.set_piece(row, col, self.black)
+
+            # Set white pieces
+            row, col = self.manoury_to_coords(max_manoury - pi)
+            self.set_piece(row, col, self.white)
+        # end for
+    # end def _setup_board
+
+    def manoury_to_coords(self, manpos: int) -> Tuple[int, int]:
+        """
+        Convert Manoury to coordinates.
+
+        Args:
+            manpos (int): Manpo coordinate
+
+        Returns:
+            Tuple[int, int]: Board coordinate
+        """
+        assert 1 <= manpos <= (self.size * self.size * 2), \
+            f"Manoury notation must be between 1 and {self.size * self.size * 2}, got {manpos}"
+        col = manpos % self.size
+        row = int(math.floor(manpos / self.size))
+        return row, col
+    # end def manoury_to_coords
+
+    def coords_to_manoury(self, row: int, col: int) -> int:
+        """
+        Convert coordinates to Manoury.
+
+        Args:
+            row (int): Row
+            col (int): Column
+
+        Returns:
+            int: Manoury
+        """
+        return row * self.size + col
+    # end coords_to_manoury
     
     def set_piece(self, row: int, col: int, value: int):
         """
@@ -200,17 +246,19 @@ class CheckersBoard:
         result = "  "
         for col in range(self.size):
             result += f"{chr(97 + col)} "
+        # end for
         result += "\n"
         
-        for row in range(self.size):
+        for row in range(self.size * 2):
             result += f"{self.size - row} "
-            for col in range(self.size):
+            for col in range(self.size * 2):
                 piece = self.board[row, col]
                 if piece == self.empty:
                     if (row + col) % 2 == 0:  # Light squares
                         result += "□ "
                     else:  # Dark squares
                         result += "■ "
+                    # end if
                 elif piece == self.black:
                     result += "● "
                 elif piece == self.white:
@@ -219,13 +267,16 @@ class CheckersBoard:
                     result += "♚ "
                 elif piece == self.white_king:
                     result += "♔ "
+                # end if
             result += f"{self.size - row}\n"
-        
+        # end for
         result += "  "
         for col in range(self.size):
             result += f"{chr(97 + col)} "
+        # end for
         
         return result
+    # end def __str__
     
     def __repr__(self):
         """
@@ -244,15 +295,27 @@ class CheckersGame(GameInterface):
     This class handles the game state, move validation, and game rules.
     It implements the GameInterface to ensure compatibility with the boardGPT framework.
     """
+
+    # Board size (standard Checkers board is 10x10 (but 5x5 to play)
+    SIZE = 5
+
+    # Player constants for board representation
+    EMPTY = 0  # Empty cell
+    BLACK = 1  # Black piece (typically goes first)
+    WHITE = 2  # White piece
+    BLACK_KING = 3 # Black king
+    WHITE_KING = 4 # White king
     
     def __init__(self):
         """Initialize a new checkers game."""
         # Initialize the board
-        self.board = CheckersBoard()
-        
-        # Player constants
-        self.BLACK = 1
-        self.WHITE = 2
+        self.board = CheckersBoard(
+            size=self.SIZE,
+            black=self.BLACK,
+            white=self.WHITE,
+            black_king=self.BLACK_KING,
+            white_king=self.WHITE_KING
+        )
         
         # Current player (black starts)
         self.current_player = self.BLACK
@@ -270,6 +333,15 @@ class CheckersGame(GameInterface):
         
         # Current jump sequence (for multiple jumps)
         self.current_jump_sequence = None
+
+    def validate_game(self) -> Tuple[bool, str]:
+        """
+        Validate the game state.
+
+        Returns:
+            Tuple[bool, str]: True if the game is valid, False otherwise, with the invalid move.
+        """
+
     
     def get_valid_moves(self) -> List[Tuple[int, int]]:
         """
@@ -661,8 +733,10 @@ class CheckersGame(GameInterface):
         if self.game_over:
             winner = "Black" if self.winner == self.BLACK else "White"
             result += f"\nGame over! {winner} wins!"
+        # end if
         
         return result
+    # end def __str__
     
     def __repr__(self):
         """
@@ -672,6 +746,19 @@ class CheckersGame(GameInterface):
             str: String representation of the game
         """
         return self.__str__()
+    # end __repr__
+
+    def __len__(self):
+        """
+        Return the length of the game state.
+
+        Returns:
+            int: Length of the game state
+        """
+        return len(self.moves)
+    # end __len__
+
+# end class CheckersGame
 
 
 def generate_checkers_game(seed: int = None, max_attempts: int = 100) -> CheckersGame:

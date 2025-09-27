@@ -50,7 +50,7 @@ Here's an example of how to use the `invalid_move_rate` function:
 
 ```python
 from boardGPT.validation.metrics import invalid_move_rate
-from boardGPT.models.gpt import GPT
+from boardGPT.nn.gpt import GPT
 
 # Load the model
 model = GPT.from_pretrained('othello')
@@ -59,13 +59,13 @@ model.eval()
 
 # Compute the invalid move rate
 rate = invalid_move_rate(
-    model=model,
-    data_dir='data',
-    split='val',
-    data_filename='val.pkl',
-    num_samples=100,
-    temperature=1.0,
-    top_k=None
+   model=model,
+   data_dir='data',
+   split='val',
+   data_filename='val.pkl',
+   num_samples=100,
+   temperature=1.0,
+   top_k=None
 )
 
 print(f"Invalid move rate: {rate:.4f}")

@@ -4,7 +4,7 @@ import json
 
 import torch
 from safetensors.torch import save_model
-from boardGPT.models import GPTConfig, GPT
+from boardGPT.nn import GPTConfig, GPT
 
 
 if __name__ == "__main__":

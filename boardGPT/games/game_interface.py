@@ -42,6 +42,7 @@ class GameInterface(ABC):
             List[Tuple[int, int]]: A list of (row, col) tuples representing valid move positions
         """
         pass
+    # end def get_valid_moves
     
     @abstractmethod
     def is_valid_move(self, row: int, col: int) -> bool:
@@ -74,7 +75,7 @@ class GameInterface(ABC):
     @abstractmethod
     def make_random_move(self) -> Optional[Tuple[int, int]]:
         """
-        Make a random valid move for the current player.
+        Make a random valid move for the current player. If there is no valid move, return None.
         
         Returns:
             Optional[Tuple[int, int]]: The (row, col) of the move made, or None if no move was possible
@@ -114,6 +115,7 @@ class GameInterface(ABC):
             str: Position in standard notation
         """
         pass
+    # end def coords_to_notation
     
     @abstractmethod
     def notation_to_coords(self, notation: str) -> Tuple[int, int]:
@@ -127,6 +129,7 @@ class GameInterface(ABC):
             Tuple[int, int]: (row, col) coordinates
         """
         pass
+    # end def notation_to_coords
     
     @abstractmethod
     def get_moves(self) -> List[str]:
@@ -137,6 +140,7 @@ class GameInterface(ABC):
             List[str]: List of moves in standard notation
         """
         pass
+    # end def get_moves
     
     @abstractmethod
     def show(self) -> None:
@@ -144,3 +148,18 @@ class GameInterface(ABC):
         Display the current game state.
         """
         pass
+    # end show
+
+    @abstractmethod
+    def __len__(self) -> int:
+        """
+        Return the length of the current game state.
+
+        Returns:
+            int: Length of the current game state
+        """
+        pass
+    # end def __len__
+
+# end class GameInterface
+

@@ -18,7 +18,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 from typing import Union, Tuple
 import json
 from safetensors.torch import safe_open
-from boardGPT.models import GPT, GPTConfig
+from boardGPT.nn import GPT, GPTConfig
 
 
 def load_safetensors(

@@ -9,7 +9,7 @@ import argparse
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from boardGPT.validation.metrics import invalid_move_rate
-from boardGPT.models.gpt import GPT, GPTConfig
+from boardGPT.nn.gpt import GPT, GPTConfig
 
 
 def main():

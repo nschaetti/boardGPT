@@ -3,7 +3,7 @@ Test script to verify that the imports work correctly after refactoring.
 """
 
 try:
-    from boardGPT.models import (
+    from boardGPT.nn import (
         GPT, 
         GPTConfig, 
         LayerNorm, 
