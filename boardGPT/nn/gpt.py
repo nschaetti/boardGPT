@@ -71,7 +71,7 @@ class GPTConfig:
     bias: bool = True  # True: bias in Linears and LayerNorms, like GPT-2. False: a bit better and faster
 
 # end class GPTConfig
-# end class GPTConfig
+
 
 class GPT(nn.Module):
     """
@@ -195,7 +195,6 @@ class GPT(nn.Module):
     def forward(
             self,
             idx: torch.LongTensor,
-            targets: torch.Tensor = None,
             recorder: ActivationRecorder = None,
             to_return: Optional[List[str]] = None,  # end def forward
     ):
@@ -204,7 +203,6 @@ class GPT(nn.Module):
 
         Args:
             idx (torch.Tensor): Input token indices of shape (batch_size, seq_len)
-            targets (torch.Tensor, optional): Target token indices of shape (batch_size, seq_len)
             recorder (ActivationRecorder, optional): Activation recorder
             to_return (List[str]): List of object to return
 
@@ -273,22 +271,15 @@ class GPT(nn.Module):
         x = self.transformer.ln_f(x)
         x = self.pre_logits_hook(x)
 
-        if targets is not None:
-            # If we are given some desired targets also calculate the loss
-            logits = self.lm_head(x)
-            loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1), ignore_index=-1)  # end if
-        else:
-            # Inference-time mini-optimization: only forward the lm_head on the very last position
-            # output is (b, 1, voc_size)
-            logits = self.lm_head(x[:, [-1], :])  # note: using list [-1] to preserve the time dim
-            loss = None  # end else
-        # end if
+        # If we are given some desired targets also calculate the loss
+        logits = self.lm_head(x)
+        # loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1), ignore_index=-1)
 
         # Add
-        obj_to_return.append(logits)
-        obj_to_return.append(loss)
+        # obj_to_return.append(logits)
+        # obj_to_return.append(loss)
 
-        return obj_to_return
+        return x, logits, obj_to_return
     # end def forward
 
     def crop_block_size(self, block_size):
