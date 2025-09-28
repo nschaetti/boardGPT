@@ -32,12 +32,13 @@ https://github.com/huggingface/transformers/blob/main/src/transformers/models/gp
 import math
 import inspect
 from dataclasses import dataclass
-from distutils.command.config import config
 from typing import Dict, Tuple, List, Optional, Any
-
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
+import json
+import yaml
+from huggingface_hub import hf_hub_download
 
 from .hooks import HookPoint
 from .layer_norm import LayerNorm
@@ -192,6 +193,68 @@ class GPT(nn.Module):
         # end if
     # end def _init_weights
 
+
+    @torch.no_grad()
+    def generate(
+            self,
+            idx,
+            max_new_tokens,
+            temperature=1.0,
+            top_k=None,
+            recorder: ActivationRecorder = None,
+            to_return: List[str] = None,  # end def generate
+    ) -> Tuple[torch.Tensor, List]:
+        """
+        Generate text by sampling from the model's distribution.
+
+        This method takes a conditioning sequence and generates new tokens
+        autoregressively by sampling from the model's predicted distribution.
+
+        Args:
+            idx (torch.Tensor): Starting token indices of shape (batch_size, seq_len)
+            max_new_tokens (int): Number of new tokens to generate
+            temperature (float): Sampling temperature (1.0 = no change, <1.0 = less random, >1.0 = more random)
+            top_k (int, optional): If specified, only sample from the top k most probable tokens
+            recorder (ActivationRecorder): Recorder to record moves
+            to_return (List[str]): List of informations to return.
+
+        Returns:
+            torch.Tensor: Generated token indices of shape (batch_size, seq_len + max_new_tokens)
+        """
+        ret_list = []
+        for _ in range(max_new_tokens):
+            # If the sequence context is growing too long we must crop it at block_size
+            idx_cond = idx if idx.size(1) <= self.config.block_size else idx[:, -self.config.block_size:]
+
+            # Forward the model to get the logits for the index in the sequence
+            x, logits, ret_list = self(
+                idx=idx_cond,
+                recorder=recorder,
+                to_return=to_return,
+            )
+
+            # Pluck the logits at the final step and scale by desired temperature
+            logits = logits[:, -1, :] / temperature
+
+            # Optionally crop the logits to only the top k options
+            if top_k is not None:
+                v, _ = torch.topk(logits, min(top_k, logits.size(-1)))
+                logits[logits < v[:, [-1]]] = -float('Inf')  # end if
+            # end if
+
+            # Apply softmax to convert logits to (normalized) probabilities
+            probs = F.softmax(logits, dim=-1)
+
+            # Sample from the distribution
+            idx_next = torch.multinomial(probs, num_samples=1)
+
+            # Append sampled index to the running sequence and continue
+            idx = torch.cat((idx, idx_next), dim=1)  # end for
+        # end for
+
+        return idx, ret_list
+    # end def generate
+
     def forward(
             self,
             idx: torch.LongTensor,
@@ -306,7 +369,41 @@ class GPT(nn.Module):
     # end crop_block_size
 
     @classmethod
-    def from_pretrained(cls, model_type, override_args=None):
+    def from_pretrained(
+            cls,
+            repo_id: str,
+            revision: str = "main",
+            device: str = "cpu",
+            **kwargs
+    ):
+        """
+        Load a pretrained GPT-2 model from a HuggingFace.
+        """
+        # Download files
+        config_path = hf_hub_download(repo_id, "config.yaml", revision=revision)
+        weights_path = hf_hub_download(repo_id, "pytorch_model.bin", revision=revision)
+
+        # Read the configuration
+        with open(config_path, "r") as f:
+            config = yaml.safe_load(f)
+        # end with
+        config = GPTConfig(**config)
+
+        # Instantiate the model
+        model = cls(
+            config=config,
+            **kwargs
+        )
+
+        # 5. Charger les poids
+        state_dict = torch.load(weights_path, map_location=device)
+        model.load_state_dict(state_dict, strict=False)
+
+        return model
+    # end def load_pretrained
+
+    @classmethod
+    def load_pretrained(cls, model_type, override_args=None):
         """
         Load a pretrained GPT model from Hugging Face.
 
@@ -605,117 +702,4 @@ class GPT(nn.Module):
         ]  # end def to_moves
     # end to_moves
 
-    def generate_moves(
-            self,
-            sequence: List[str],
-            max_new_tokens: int,
-            device: torch.device,
-            add_pos: bool = True,
-            temperature: float = 1.0,
-            top_k: int = None,
-            recorder: ActivationRecorder = None,
-            to_return: List[str] = None  # end def generate_moves
-    ) -> Tuple[List[str], Any]:
-        """
-        Generate moves from sequence.
-
-        Args:
-            sequence (List[str]): Sequence to generate
-            max_new_tokens (int): Maximum number of tokens to generate
-            device (torch.device): Device to use
-            add_pos (bool): If True, add position to sequence
-            temperature (float): Temperature parameter
-            top_k (int): If specified, only generate tokens with this many tokens
-            device (torch.device): Device to use
-            recorder (ActivationRecorder): Recorder to record moves
-            to_return (List[str]): List of information to return.
-        """
-        # Transform sequence to idx
-        idx = GPT.to_idx(sequence, add_pos=add_pos)
-
-        # Make tensor
-        move_idx = torch.LongTensor(idx).unsqueeze(0).to(device)
-
-        # Generate tokens
-        # gen_seq is (seq_len + max_new_token)
-        gen_seq, ret_list = self.generate(
-            idx=move_idx,
-            max_new_tokens=max_new_tokens,
-            temperature=temperature,
-            top_k=top_k,
-            recorder=recorder,
-            to_return=to_return
-        )
-        gen_seq = gen_seq[0]
-
-        # Transform into str sequence
-        return (
-            GPT.to_moves(gen_seq.tolist()),
-            ret_list
-        )
-    # end generate_tokens
-
-    @torch.no_grad()
-    def generate(
-            self,
-            idx,
-            max_new_tokens,
-            temperature=1.0,
-            top_k=None,
-            recorder: ActivationRecorder = None,
-            to_return: List[str] = None,  # end def generate
-    ) -> Tuple[torch.Tensor, List]:
-        """
-        Generate text by sampling from the model's distribution.
-
-        This method takes a conditioning sequence and generates new tokens
-        autoregressively by sampling from the model's predicted distribution.
-
-        Args:
-            idx (torch.Tensor): Starting token indices of shape (batch_size, seq_len)
-            max_new_tokens (int): Number of new tokens to generate
-            temperature (float): Sampling temperature (1.0 = no change, <1.0 = less random, >1.0 = more random)
-            top_k (int, optional): If specified, only sample from the top k most probable tokens
-            recorder (ActivationRecorder): Recorder to record moves
-            to_return (List[str]): List of informations to return.
-
-        Returns:
-            torch.Tensor: Generated token indices of shape (batch_size, seq_len + max_new_tokens)
-        """
-        ret_list = []
-        for _ in range(max_new_tokens):
-            # If the sequence context is growing too long we must crop it at block_size
-            idx_cond = idx if idx.size(1) <= self.config.block_size else idx[:, -self.config.block_size:]
-
-            # Forward the model to get the logits for the index in the sequence
-            ret = self(
-                idx=idx_cond,
-                recorder=recorder,
-                to_return=to_return,
-            )
-            logits = ret[-2]
-            ret_list.append(ret[:-2])
-
-            # Pluck the logits at the final step and scale by desired temperature
-            logits = logits[:, -1, :] / temperature
-
-            # Optionally crop the logits to only the top k options
-            if top_k is not None:
-                v, _ = torch.topk(logits, min(top_k, logits.size(-1)))
-                logits[logits < v[:, [-1]]] = -float('Inf')  # end if
-            # end if
-
-            # Apply softmax to convert logits to (normalized) probabilities
-            probs = F.softmax(logits, dim=-1)
-
-            # Sample from the distribution
-            idx_next = torch.multinomial(probs, num_samples=1)
-
-            # Append sampled index to the running sequence and continue
-            idx = torch.cat((idx, idx_next), dim=1)  # end for
-        # end for
-
-        return idx, ret_list
-    # end def generate
-# end class GPT
 # end class GPT

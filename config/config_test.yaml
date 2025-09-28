@@ -16,7 +16,7 @@ num_samples: -1
 ood_perc: 0.0                   # Ratio of generated samples on the fly
 
 # wandb logging settings
-wandb_log: true                             # Whether to use wandb logging (disabled by default)
+wandb_log: false                             # Whether to use wandb logging (disabled by default)
 wandb_project: 'othello-gpt'                # Project name for wandb
 wandb_run_name: 'synthetic-othello-run1'    # Run name for wandb
 

@@ -21,7 +21,7 @@ def print_yellow(text):
     print(f"\033[1;33m{text}\033[0m")
 
 # Import the CheckersGame class directly to avoid dependencies
-sys.path.append('/home/schaetti/Projets/RECHERCHES/Recherches/BoardWorld/boardGPT')
+sys.path.append('/')
 from boardGPT.games.checkers.checkers_simulator import CheckersGame
 
 def test_initialization():

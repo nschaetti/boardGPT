@@ -73,12 +73,13 @@ class GameDataset(Dataset):
         self.padding_int = padding_int
 
         # Load the dataset
-        self.data, self.stoi, self.itos = self.load_data()
+        # self.data, self.stoi, self.itos = self.load_data()
+        self.data = self.load_data()
     # end def __init__
 
     # region PUBLIC
 
-    def load_data(self) -> Tuple[List[np.array], Dict, Dict]:
+    def load_data(self) -> List[np.array]:
         # Data dir for the specified split (train or val)
         data_dir = os.path.join(self.data_dir, self.split)
 
@@ -89,8 +90,8 @@ class GameDataset(Dataset):
         bin_files = glob.glob(os.path.join(data_dir, pattern))
 
         # Mapping dicts
-        idx_index = MAP_START_INDEX
-        stoi = dict()
+        # idx_index = MAP_START_INDEX
+        # stoi = dict()
 
         if not bin_files:
             # If no bin files found in the specified directory, print an error message
@@ -106,20 +107,20 @@ class GameDataset(Dataset):
                 with open(bin_file, 'rb') as f:
                     sequences = pickle.load(f)
                     game_sequences.extend(sequences)
-                    for seq in sequences:
-                        for v in np.unique(seq):
-                            if v not in stoi:
-                                stoi[v] = idx_index
-                                idx_index += 1
-                            # end if
-                        # end for
-                    # end for
+                    # for seq in sequences:
+                    #     for v in np.unique(seq):
+                    #         if v not in stoi:
+                    #             stoi[v] = idx_index
+                    #             idx_index += 1
+                    #         # end if
+                    #     # end for
+                    # # end for
                 # end with
             # end for
         # end if
 
         # Build itos
-        itos = {i:v for v,i in stoi.items()}
+        # itos = {i:v for v,i in stoi.items()}
 
         # Limit samples
         if self.num_samples > 0:
@@ -127,7 +128,7 @@ class GameDataset(Dataset):
         # end if
 
         # Store in the appropriate global variable
-        return game_sequences, stoi, itos
+        return game_sequences
     # end def load_data
 
     # Get a raw sequence
@@ -159,7 +160,7 @@ class GameDataset(Dataset):
             return [self.itos[mi].decode() for mi in moves_i.tolist() if mi != self.padding_int]
         else:
             raise NotImplementedError
-        # end if
+        # end if│ ❱ 157 │   │   │   return [self.itos[mi].decode() for mi in moves_i if mi != self.padding_int]                                                                                                                                        │
     # end def to_moves
 
     # Transform to an int-move
@@ -195,46 +196,58 @@ class GameDataset(Dataset):
         game_sequence: np.bytes_ = self.data[idx]
 
         # Transforme into a list of int
-        game_sequence: List[int] = [self.stoi[x] for x in game_sequence]
+        # game_sequence: List[int] = [self.stoi[x] for x in game_sequence]
 
         # Get a random position
         ix = random.randint(1, len(game_sequence) - 1)
 
         # Get subsequence and pad
-        x = [self.padding_int] * (self.block_size - ix) + game_sequence[:ix]
-        y =  [self.padding_int] * (self.block_size - ix - 1) + game_sequence[:ix+1]
+        x = game_sequence[:ix]
+        y = game_sequence[:ix + 1]
+        # x = [self.padding_int] * (self.block_size - ix) + game_sequence[:ix]
+        # y =  [self.padding_int] * (self.block_size - ix - 1) + game_sequence[:ix+1]
+
+        # Decode
+        x = [s.decode() for s in x]
+        y = [s.decode() for s in y]
+
+        x = ["<pad>"] * (self.block_size - ix) + x
+        y = ["<pad>"] * (self.block_size - ix - 1) + y
+
+        # Transform in text
+        x = " ".join(x)
+        y = " ".join(y)
 
         # Get x and y
-        x = torch.tensor(x, dtype=torch.long)
-        y = torch.tensor(y, dtype=torch.long)
+        # x = torch.tensor(x, dtype=torch.long)
+        # y = torch.tensor(y, dtype=torch.long)
 
         # Check that x and y have the same sizes
-        if x.shape[0] != y.shape[0]:
-            raise ValueError(
-                f"x and y must have the same length. x is {x.shape[0]} but y is {y.shape[0]}, "
-                f"x: {x}, "
-                f"y: {y}, "
-                f"game_sequence: {game_sequence} ({len(game_sequence)}) "
-                f"ix: {ix}"
-            )
-        # end if
-
-        # Must be 60
-        if x.shape[0] != 60:
-            raise ValueError(
-                f"x and y must be 60 but x is {x.shape[0]} but y is {y.shape[0]}, "
-                f"x: {x}, "
-                f"y: {y}, "
-                f"game_sequence: {game_sequence} ({len(game_sequence)}), "
-                f"ix: {ix}"
-            )
-        # end if
+        # if x.shape[0] != y.shape[0]:
+        #     raise ValueError(
+        #         f"x and y must have the same length. x is {x.shape[0]} but y is {y.shape[0]}, "
+        #         f"x: {x}, "
+        #         f"y: {y}, "
+        #         f"game_sequence: {game_sequence} ({len(game_sequence)}) "
+        #         f"ix: {ix}"
+        #     )
+        # # end if
+        #
+        # # Must be 60
+        # if x.shape[0] != 60:
+        #     raise ValueError(
+        #         f"x and y must be 60 but x is {x.shape[0]} but y is {y.shape[0]}, "
+        #         f"x: {x}, "
+        #         f"y: {y}, "
+        #         f"game_sequence: {game_sequence} ({len(game_sequence)}), "
+        #         f"ix: {ix}"
+        #     )
+        # # end if
 
         return x, y
     # end __getitem__
 
     # endregion OVERWRITE
-# end class GameDataset
-# end class GameDataset
 
+# end class GameDataset
 

@@ -22,6 +22,7 @@ from typing import List, Tuple, Dict, Optional
 import sys
 import torch
 from rich.progress import Progress, TextColumn, BarColumn, TimeElapsedColumn, TimeRemainingColumn
+from transformers import PreTrainedTokenizerFast
 
 from boardGPT import othello
 from boardGPT.datasets.utils import load_othello_data_files
@@ -126,7 +127,7 @@ def is_valid_game_sequence(game: List[str]) -> bool:
         # Make the last move
         success = othello_game.make_move(row, col)
         if not success:
-            return False  # end if
+            return False
         # end if
     # end if
     
@@ -138,6 +139,7 @@ def invalid_move_rate(
         model,
         iter,
         dataset,
+        tokenizer: PreTrainedTokenizerFast,
         num_samples: Optional[int] = 1000,
         device: str = "cpu"
 ) -> float:
@@ -148,6 +150,7 @@ def invalid_move_rate(
         model: The model to evaluate
         iter: The number of iterations to evaluate
         dataset: The dataset to use
+        tokenizer: The tokenizer to use
         num_samples (int): Number of samples to evaluate
         temperature (float): Temperature for sampling
         top_k (int): Top-k sampling parameter
@@ -172,7 +175,7 @@ def invalid_move_rate(
 
         # Generate the next move using the model
         with torch.no_grad():
-            logits = model(X)[0]
+            _, logits, _, _ = model(X)
         # end with
 
         # logits: (B, 1, 61)
@@ -183,7 +186,10 @@ def invalid_move_rate(
             Xs = X[bi]
             preds = logits[bi]
             pred_token = torch.argmax(preds).item()
-            pred_moves = dataset.to_moves(Xs.tolist() + [pred_token])
+            pred_ids = Xs.tolist() + [pred_token]
+
+            # Decode
+            pred_moves = tokenizer.decode(pred_ids, skip_special_tokens=True)
 
             # Check game validity
             try:

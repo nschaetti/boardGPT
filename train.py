@@ -30,6 +30,7 @@ $ torchrun --nproc_per_node=8 --nnodes=2 --node_rank=1 --master_addr=123.456.123
 
 Note: The data directory must contain 'train' and 'val' folders with bin files for each split.
 """
+import json
 
 # Imports
 import wandb
@@ -48,8 +49,14 @@ import torch
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.distributed import init_process_group, destroy_process_group
 
+from tokenizers import Tokenizer
+from tokenizers.models import WordLevel
+from transformers import PreTrainedTokenizerFast
+from tokenizers.pre_tokenizers import Whitespace
+
 # BoardGPT
 from boardGPT.datasets import load_othello_data_files, GameDataset
+from boardGPT.models import GameGPT
 from boardGPT.nn import GPTConfig, GPT
 from boardGPT.validation.metrics import is_valid_game_sequence, invalid_move_rate
 from boardGPT.utils import info, error, warning, train_log, eval_log
@@ -467,9 +474,103 @@ def get_batch(split, config, device, device_type):
     return x, y
 # end get_batch
 
+
+def build_vocab(output: str):
+    """
+    Build vocabulary for BoardGPT:
+    - 60 positions (8x8 board minus 4 starting squares for Othello)
+    - Special tokens <pad>
+
+    Args:
+        output (str): Path to output file
+
+    Returns:
+        dict: Vocabulary dictionary
+    """
+    # Generate all positions
+    positions = [f"{c}{r}" for c in "abcdefgh" for r in range(1, 9)]
+
+    # Remove the 4 starting squares (Othello)
+    for start in ["d4", "e5", "d5", "e4"]:
+        positions.remove(start)
+    # end for
+
+    specials = ["<pad>"]
+    tokens = specials + positions
+
+    # Map tokens to integer IDs
+    vocab = {tok: i for i, tok in enumerate(tokens)}
+
+    # Save to vocab.json
+    vocab_file = os.path.join(output, "vocab.json")
+    with open(vocab_file, "w") as f:
+        info(f"Writing vocab to {vocab_file}")
+        json.dump(
+            obj=vocab,
+            fp=f,
+            indent=2
+        )
+    # end with
+
+    return vocab
+# end def build_vocab
+
+
+def build_tokenizer(vocab: dict, output: str, save_path="tokenizer.json"):
+    """
+    Build a HuggingFace-compatible tokenizer from a fixed vocab.
+    Saves a tokenizer.json file that can be reloaded later.
+    """
+    tokenizer = Tokenizer(WordLevel(vocab=vocab, unk_token="<pad>"))
+    tokenizer.pre_tokenizer = Whitespace()
+    tokenizer.save(save_path)
+
+    fast_tok = PreTrainedTokenizerFast(
+        tokenizer_file=save_path,
+        pad_token="<pad>",
+        unk_token="<pad>",
+    )
+
+    # Save tokenizer.json (already exists inside tokenizer)
+    info(f"Writing tokenizer to {output}/tokenizer")
+    fast_tok.save_pretrained(save_directory=os.path.join(output, "tokenizer"))
+
+    return fast_tok
+# end build_tokenizer
+
+
+def collate_fn(batch, tokenizer: PreTrainedTokenizerFast):
+    """
+    Convert a batch of raw strings into padded tensors.
+
+    Args:
+        batch (list): A batch of raw strings.
+        tokenizer (PreTrainedTokenizerFast): Tokenizer object used to tokenize the batch.
+        max_length (int, optional): Maximum length of the padded tensors.
+
+    Returns:
+        tuple: padded tensors and padded lengths.
+    """
+    enc = tokenizer(
+        batch,
+        return_tensors="pt"
+    )
+
+    # Sequence length
+    seq_len = enc["input_ids"].shape[-1] // 2
+
+    # Split into X and Y
+    X = enc["input_ids"][:, :seq_len]
+    Y = enc["input_ids"][:, seq_len:]
+
+    return X, Y
+# end def collate_fn
+
+
 def get_dataloader(
         split: str,
-        config: TrainingConfig
+        config: TrainingConfig,
+        tokenizer: PreTrainedTokenizerFast,
 ) -> torch.utils.data.DataLoader:
     """
     Get dataloaders for training and validation.
@@ -478,6 +579,7 @@ def get_dataloader(
         split (str): 'train' or 'val' to specify which data split to use
         config (TrainingConfig): Configuration object containing 'data_dir' which points to a directory
         with 'train' and 'val' folders containing bin files for each split
+        tokenizer (PreTrainedTokenizerFast): Tokenizer object used to tokenize the batch
     """
     dataset = GameDataset(
         data_dir=config.data_dir,
@@ -495,6 +597,7 @@ def get_dataloader(
         pin_memory=config.pin_memory,
         shuffle=config.shuffle,
         drop_last=config.drop_last,
+        collate_fn=lambda b: collate_fn(b, tokenizer)
     )
 
     return dataloader
@@ -549,7 +652,7 @@ def initialize_model(config, device, ckpt_path=None, start_iter=None):
         
         # Create the model
         gptconf = GPTConfig(**model_args)
-        model = GPT(gptconf)
+        model = GameGPT(gptconf)
         
         # Load the state dict
         state_dict = checkpoint['model']
@@ -577,7 +680,7 @@ def initialize_model(config, device, ckpt_path=None, start_iter=None):
         # Create the model
         model_args['vocab_size'] = vocab_size if vocab_size is not None else 50304
         gptconf = GPTConfig(**model_args)
-        model = GPT(gptconf)
+        model = GameGPT(gptconf)
     # end if
     
     # Crop down the model block size if desired, using model surgery
@@ -597,6 +700,7 @@ def estimate_loss(
         model,
         iter_data,
         dataset,
+        tokenizer: PreTrainedTokenizerFast,
         ctx,
         config,
         device
@@ -609,6 +713,7 @@ def estimate_loss(
         model: The model to evaluate
         iter_data: The iteration data to use
         dataset: The dataset to use
+        tokenizer: The tokenizer to use
         ctx: Context manager for mixed precision
         config (TrainingConfig): Configuration object
         device (str): Device to use for tensors
@@ -622,14 +727,15 @@ def estimate_loss(
     
     for split in ['train', 'val']:
         losses = torch.zeros(config.eval_iters)
-        
+
+        # For each eval iterations
         for k in range(config.eval_iters):
             # Use the appropriate data loading function based on the configuration
             X, Y = next(iter_data)
             X, Y = X.to(device), Y.to(device)
 
             with ctx:
-                logits, loss = model(X, Y)
+                _, logits, loss, _ = model(X, Y)
             # end with
 
             # Keep loss
@@ -642,6 +748,7 @@ def estimate_loss(
                 model=model,
                 iter=iter_data,
                 dataset=dataset,
+                tokenizer=tokenizer,
                 device=device,
                 num_samples=config.imr_iters
             )
@@ -833,10 +940,15 @@ def main():
     
     # Training loop initialization
     # Use the appropriate data loading function based on the configuration
-    dataloader = get_dataloader(split="train", config=config)
-    val_dataloader = get_dataloader(split="val", config=config)
+    vocab = build_vocab(output=config.out_dir)
+    tokenizer = build_tokenizer(vocab=vocab, output=config.out_dir)
+
+    dataloader = get_dataloader(split="train", config=config, tokenizer=tokenizer)
+    val_dataloader = get_dataloader(split="val", config=config, tokenizer=tokenizer)
     val_data_iter = infinite_loader(val_dataloader)
     data_iter = infinite_loader(dataloader)
+
+    # Get first batch
     X, Y = next(data_iter)
     X, Y = X.to(device), Y.to(device)
 
@@ -860,11 +972,13 @@ def main():
                 model=model,
                 iter_data=val_data_iter,
                 dataset=val_dataloader.dataset,
+                tokenizer=tokenizer,
                 ctx=ctx,
                 config=config,
                 device=device
             )
 
+            # Log eval
             eval_log(
                 f"step {iter_num}: train loss {losses['train']:.4f}, val loss {losses['val']:.4f}, imr {losses['IMR']:.4f}"
             )
@@ -907,7 +1021,8 @@ def main():
             
             # Forward pass
             with ctx:
-                logits, loss = model(X, Y)
+                _, logits, loss, _ = model(X, Y)
+
                 # Scale the loss to account for gradient accumulation
                 loss = loss / gradient_accumulation_steps
             # end with
@@ -972,13 +1087,13 @@ def main():
         # end if
     # end for epochs
     
-    # Clean up distributed process group if using DDP
+    # Clean up a distributed process group if using DDP
     if ddp:
         destroy_process_group()
     # end if
 # end def main
 
-# Execute main function if script is run directly
+# Execute the main function if a script is run directly
 if __name__ == "__main__":
     main()
 # end if

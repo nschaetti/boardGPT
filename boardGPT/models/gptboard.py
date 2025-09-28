@@ -22,11 +22,9 @@ import inspect
 from dataclasses import dataclass
 from distutils.command.config import config
 from typing import Dict, Tuple, List, Optional, Any
-
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
-
 from boardGPT.nn.register import ActivationRecorder
 from boardGPT.nn import GPT
 
@@ -46,7 +44,7 @@ class GameGPT(GPT):
              to_return: List[str] = None  # end def generate_moves
      ) -> Tuple[List[str], Any]:
           """
-          Generate moves from sequence.
+          Generate moves from a sequence.
 
           Args:
               sequence (List[str]): Sequence to generate
