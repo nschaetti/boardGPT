@@ -39,6 +39,7 @@ from torch.nn import functional as F
 import json
 import yaml
 from huggingface_hub import hf_hub_download
+from safetensors.torch import load_file
 
 from .hooks import HookPoint
 from .layer_norm import LayerNorm
@@ -380,13 +381,14 @@ class GPT(nn.Module):
         Load a pretrained GPT-2 model from a HuggingFace.
         """
         # Download files
-        config_path = hf_hub_download(repo_id, "config.yaml", revision=revision)
-        weights_path = hf_hub_download(repo_id, "pytorch_model.bin", revision=revision)
+        config_path = hf_hub_download(repo_id, filename="config.yaml", subfolder="safetensors", revision=revision)
+        weights_path = hf_hub_download(repo_id, filename="model.safetensors", subfolder="safetensors", revision=revision)
 
         # Read the configuration
         with open(config_path, "r") as f:
             config = yaml.safe_load(f)
         # end with
+
         config = GPTConfig(**config)
 
         # Instantiate the model
@@ -395,8 +397,8 @@ class GPT(nn.Module):
             **kwargs
         )
 
-        # 5. Charger les poids
-        state_dict = torch.load(weights_path, map_location=device)
+        # Load file
+        state_dict = load_file(weights_path, device=device)
         model.load_state_dict(state_dict, strict=False)
 
         return model
