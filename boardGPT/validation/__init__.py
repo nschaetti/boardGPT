@@ -15,9 +15,10 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 
-from .metrics import invalid_move_rate, is_valid
+from .metrics import invalid_move_rate, is_valid, evaluate_IMR
 
 __all__ = [
     "invalid_move_rate",
-    "is_valid"
+    "is_valid",
+    "evaluate_IMR"
 ]

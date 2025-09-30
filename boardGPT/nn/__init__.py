@@ -19,6 +19,10 @@ from .gpt import (
     GPT,
     GPTConfig
 )
+from .gptae import (
+    GPTAE,
+    GPTAEConfig
+)
 from .layer_norm import LayerNorm
 from .block import Block, MLP, CausalSelfAttention
 from .register import ActivationRecorder
@@ -27,6 +31,8 @@ from .register import ActivationRecorder
 __all__ = [
     "GPT",
     "GPTConfig",
+    "GPTAEConfig",
+    "GPTAE",
     "LayerNorm",
     "CausalSelfAttention",
     "Block",

@@ -695,6 +695,7 @@ def initialize_model(config, device, ckpt_path=None, start_iter=None):
     return model, iter_num, best_val_loss, model_args
 # end initialize_model
 
+
 @torch.no_grad()
 def estimate_loss(
         model,

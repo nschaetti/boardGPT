@@ -91,7 +91,7 @@ class GPT(nn.Module):
     def __init__(
             self,
             config: GPTConfig,
-            use_flash: bool = True  # end def __init__
+            use_flash: bool = True
     ):
         """
         Initialize the GPT model.
@@ -401,7 +401,7 @@ class GPT(nn.Module):
         state_dict = load_file(weights_path, device=device)
         model.load_state_dict(state_dict, strict=False)
 
-        return model
+        return model, config
     # end def load_pretrained
 
     @classmethod

@@ -45,7 +45,7 @@ class GameDataset(Dataset):
             block_size: int = 60,
             split: str = 'train',
             ood_perc: float = 0.,
-            num_samples: int = 10000,
+            num_samples: int = -1,
             padding_int: int = 0,  # end def __init__
     ):
         """
@@ -107,14 +107,6 @@ class GameDataset(Dataset):
                 with open(bin_file, 'rb') as f:
                     sequences = pickle.load(f)
                     game_sequences.extend(sequences)
-                    # for seq in sequences:
-                    #     for v in np.unique(seq):
-                    #         if v not in stoi:
-                    #             stoi[v] = idx_index
-                    #             idx_index += 1
-                    #         # end if
-                    #     # end for
-                    # # end for
                 # end with
             # end for
         # end if
@@ -195,17 +187,12 @@ class GameDataset(Dataset):
         # Get a game sequence
         game_sequence: np.bytes_ = self.data[idx]
 
-        # Transforme into a list of int
-        # game_sequence: List[int] = [self.stoi[x] for x in game_sequence]
-
         # Get a random position
         ix = random.randint(1, len(game_sequence) - 1)
 
         # Get subsequence and pad
         x = game_sequence[:ix]
         y = game_sequence[:ix + 1]
-        # x = [self.padding_int] * (self.block_size - ix) + game_sequence[:ix]
-        # y =  [self.padding_int] * (self.block_size - ix - 1) + game_sequence[:ix+1]
 
         # Decode
         x = [s.decode() for s in x]
@@ -217,32 +204,6 @@ class GameDataset(Dataset):
         # Transform in text
         x = " ".join(x)
         y = " ".join(y)
-
-        # Get x and y
-        # x = torch.tensor(x, dtype=torch.long)
-        # y = torch.tensor(y, dtype=torch.long)
-
-        # Check that x and y have the same sizes
-        # if x.shape[0] != y.shape[0]:
-        #     raise ValueError(
-        #         f"x and y must have the same length. x is {x.shape[0]} but y is {y.shape[0]}, "
-        #         f"x: {x}, "
-        #         f"y: {y}, "
-        #         f"game_sequence: {game_sequence} ({len(game_sequence)}) "
-        #         f"ix: {ix}"
-        #     )
-        # # end if
-        #
-        # # Must be 60
-        # if x.shape[0] != 60:
-        #     raise ValueError(
-        #         f"x and y must be 60 but x is {x.shape[0]} but y is {y.shape[0]}, "
-        #         f"x: {x}, "
-        #         f"y: {y}, "
-        #         f"game_sequence: {game_sequence} ({len(game_sequence)}), "
-        #         f"ix: {ix}"
-        #     )
-        # # end if
 
         return x, y
     # end __getitem__
