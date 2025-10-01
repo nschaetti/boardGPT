@@ -18,8 +18,10 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 import os
 import pickle
 from typing import Tuple, List, Union
+import torch
+from transformers import PreTrainedTokenizerFast
 
-import numpy as np
+from .game_dataset import GameDataset
 
 
 def load_othello_data_files(
@@ -74,8 +76,89 @@ def load_othello_data_files(
 
     # Concatenate game sequences
     if flatten:
-        return [x for sublist in game_sequences for x in sublist.tolist()]  # end if
+        return [x for sublist in game_sequences for x in sublist.tolist()]
     else:
-        return game_sequences  # end else
+        return game_sequences
     # end if
 # end def load_othello_dataset
+
+
+def collate_fn(batch, tokenizer: PreTrainedTokenizerFast):
+    """
+    Convert a batch of raw strings into padded tensors.
+
+    Args:
+        batch (list): A batch of raw strings.
+        tokenizer (PreTrainedTokenizerFast): Tokenizer object used to tokenize the batch.
+        max_length (int, optional): Maximum length of the padded tensors.
+
+    Returns:
+        tuple: padded tensors and padded lengths.
+    """
+    enc = tokenizer(
+        batch,
+        return_tensors="pt"
+    )
+
+    # Sequence length
+    seq_len = enc["input_ids"].shape[-1] // 2
+
+    # Split into X and Y
+    X = enc["input_ids"][:, :seq_len]
+    Y = enc["input_ids"][:, seq_len:]
+
+    return X, Y
+# end def collate_fn
+
+
+def get_dataloader(
+        split: str,
+        config,
+        tokenizer: PreTrainedTokenizerFast,
+) -> torch.utils.data.DataLoader:
+    """
+    Get dataloaders for training and validation.
+
+    Args:
+        split (str): 'train' or 'val' to specify which data split to use
+        config (TrainingConfig): Configuration object containing 'data_dir' which points to a directory
+        with 'train' and 'val' folders containing bin files for each split
+        tokenizer (PreTrainedTokenizerFast): Tokenizer object used to tokenize the batch
+    """
+    dataset = GameDataset(
+        data_dir=config.data_dir,
+        split=split,
+        block_size=config.block_size,
+        ood_perc=config.ood_perc,
+        num_samples=config.num_samples
+    )
+
+    # Create a dataloader
+    dataloader = torch.utils.data.DataLoader(
+        dataset=dataset,
+        batch_size=config.batch_size,
+        num_workers=config.num_workers,
+        pin_memory=config.pin_memory,
+        shuffle=config.shuffle,
+        drop_last=config.drop_last,
+        collate_fn=lambda b: collate_fn(b, tokenizer)
+    )
+
+    return dataloader
+# end def get_dataloader
+
+
+def infinite_loader(
+        dataloader: torch.utils.data.DataLoader
+):
+    """
+    Infinite loader that returns batches from dataloader.
+    """
+    while True:
+        for batch in dataloader:
+            X, Y = batch
+            yield X, Y
+        # end for
+    # end while
+# end def infinite_loader
+

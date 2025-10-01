@@ -16,10 +16,13 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 
 from .game_dataset import GameDataset
-from .utils import load_othello_data_files
+from .utils import load_othello_data_files, get_dataloader, collate_fn, infinite_loader
 
 __all__ = [
     "GameDataset",
-    "load_othello_data_files"
+    "load_othello_data_files",
+    "get_dataloader",
+    "collate_fn",
+    "infinite_loader"
 ]
 

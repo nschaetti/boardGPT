@@ -15,15 +15,6 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 
-from .cli import (
-    othello_generate,
-    othello_visualize,
-    othello_load,
-    othello_play,
-    othello_convert,
-    othello_verify
-)
-
 from .othello_simulator import (
     OthelloGame,
     create_id_to_move_mapping,
@@ -36,12 +27,6 @@ from .othello_simulator import (
 from .othello_utils import verify_game, game_to_board
 
 __all__ = [
-    "othello_generate",
-    "othello_visualize",
-    "othello_load",
-    "othello_play",
-    "othello_convert",
-    "othello_verify",
     "OthelloGame",
     "create_id_to_move_mapping",
     "create_move_mapping",

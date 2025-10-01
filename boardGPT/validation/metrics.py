@@ -15,19 +15,10 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 
-import os
-import random
-import numpy as np
-from typing import List, Tuple, Dict, Optional
-import sys
+from typing import List, Optional
 import torch
-from rich.progress import Progress, TextColumn, BarColumn, TimeElapsedColumn, TimeRemainingColumn
 from tqdm import tqdm
 from transformers import PreTrainedTokenizerFast
-
-from boardGPT import othello
-from boardGPT.datasets.utils import load_othello_data_files
-from boardGPT.games.othello import OthelloGame, create_id_to_move_mapping, create_move_mapping
 
 
 def is_valid(move: str, previous_moves: List[str]) -> bool:
@@ -41,6 +32,8 @@ def is_valid(move: str, previous_moves: List[str]) -> bool:
     Returns:
         bool: True if the move is valid, False otherwise
     """
+    from boardGPT.games.othello.othello_simulator import OthelloGame
+
     # Convert the move_id to move notation
     if move == "BOS":  # BOS token is not a valid move
         return False
@@ -80,6 +73,8 @@ def is_valid_game_sequence(game: List[str]) -> bool:
     Raises:
         ValueError: If any move before the last one is invalid
     """
+    from boardGPT.games.othello.othello_simulator import OthelloGame
+
     # Create a new Othello game
     othello_game = OthelloGame()
     
@@ -157,6 +152,8 @@ def evaluate_IMR(
     Returns:
         float: Average rate of invalid moves
     """
+    from boardGPT.games import othello
+
     total_invalid = 0
     total_moves = 0
 

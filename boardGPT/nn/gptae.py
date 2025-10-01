@@ -132,7 +132,7 @@ class GPTAE(nn.Module):
 
         # Batch size, sequence length
         b, t, e = x.size()
-        print(f"b: {b}, t: {t}, e: {e}")
+
         # Check max sequence length
         assert t <= self.config.block_size, \
             f"Cannot forward sequence of length {t}, block size is only {self.config.block_size}"
@@ -142,10 +142,10 @@ class GPTAE(nn.Module):
 
         # pos_emb is (b, t, 512)
         pos_emb = self.decoder.wpe(pos)  # position embeddings of shape (t, n_embd)
-        print(f"pos_emb: {pos_emb.shape}")
+
         # x is (b, t, 512)
         x = self.decoder.drop(x + pos_emb)
-        print(f"x: {x.shape}")
+
         # Process through transformer blocks
         for (block_i, block) in enumerate(self.decoder.h):
             x = block(x=x)
@@ -167,19 +167,18 @@ class GPTAE(nn.Module):
         Returns:
             logits: FloatTensor (batch, seq_len, vocab_size)
         """
-        print(f"idx.shape: {idx.shape}")
         # Encoder
         x = self.forward_transformer(
             module=self.encoder,
             idx=idx
         )
-        print(f"x.shape: {x.shape}")
+
         # Compression
         z = self.to_latent(x)  # (B, L, n_latent)
-        print(f"z.shape: {z.shape}")
+
         # Expansion
         x = self.from_latent(z)  # (B, L, 512)
-        print(f"x.shape: {x.shape}")
+
         # Decoder
         x = self.forward_decoder(x)  # (B, L, 512)
 

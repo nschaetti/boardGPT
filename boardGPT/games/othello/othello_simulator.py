@@ -25,14 +25,8 @@ for simulating Othello games, validating moves, and manipulating game data.
 import random
 import numpy as np
 import pickle
-from collections import Counter
 from typing import List, Tuple, Set, Dict, Optional
-from rich.text import Text
 from rich.columns import Columns
-import matplotlib.pyplot as plt
-from matplotlib.widgets import Button
-from PIL import Image
-from boardGPT.utils import console, warning, info, error
 from boardGPT.games.game_interface import GameInterface
 
 
@@ -750,6 +744,8 @@ class OthelloGame(GameInterface):
         Returns:
             OthelloGame: A game board with the moves applied
         """
+        from boardGPT.utils.logging import warning
+
         # Instance class
         board = OthelloGame()
         
@@ -793,6 +789,8 @@ class OthelloGame(GameInterface):
     # end load_moves
 
     def show(self):
+        from boardGPT.utils.logging import console
+
         if not self.moves:
             # If no moves have been made, just show the initial board
             console.print(self.board)
@@ -905,6 +903,8 @@ def generate_othello_game(
     Returns:
         List[str]: List of moves in standard notation (e.g., ['d3', 'c4', 'e3'])
     """
+    from boardGPT.utils.logging import warning
+
     # Set random seed if provided
     if seed is not None:
         random.seed(seed)

@@ -1,0 +1,67 @@
+"""
+Copyright (C) 2025 Nils Schaetti <n.schaetti@gmail.com>
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program.  If not, see <https://www.gnu.org/licenses/>.
+"""
+
+
+# Imports
+import math
+import inspect
+from dataclasses import dataclass
+from distutils.command.config import config
+from typing import Dict, Tuple, List, Optional, Any
+import torch
+import torch.nn as nn
+from torch.nn import functional as F
+from boardGPT.nn.register import ActivationRecorder
+from boardGPT.nn import GPTAE
+
+
+class GameAutoEncoder(GPTAE):
+
+     def forward(
+             self,
+             idx: torch.LongTensor,
+             targets: torch.Tensor = None
+     ):
+          """
+          Forward pass through the model.
+
+          Args:
+              idx (torch.Tensor): Input token indices of shape (batch_size, seq_len)
+              targets (torch.Tensor, optional): Target token indices of shape (batch_size, seq_len)
+
+          Returns:
+              tuple: (logits, loss) where logits is the output predictions and loss is the
+                    cross-entropy loss if targets are provided, otherwise None
+          """
+          logits = super().forward(
+               idx=idx
+          )
+
+          if targets is not None:
+               # If we are given some desired targets also calculate the loss
+               loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1), ignore_index=-1)  # end if
+          else:
+               # Inference-time mini-optimization: only forward the lm_head on the very last position
+               # output is (b, 1, voc_size)
+               logits = self.lm_head(x[:, [-1], :])  # note: using list [-1] to preserve the time dim
+               loss = None
+          # end if
+
+          return logits, loss
+     # end def forward
+
+# end class GameAutoEncoder

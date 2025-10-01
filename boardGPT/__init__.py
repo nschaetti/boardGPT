@@ -20,11 +20,11 @@ from typing import Union, List, Tuple, Optional, Any
 import random
 import numpy as np
 
-from boardGPT.games.othello.othello_simulator import OthelloGame
-from boardGPT.games.othello.othello_utils import verify_game as verify_othello_game
-from boardGPT.games.checkers.checkers_simulator import CheckersGame
-from boardGPT.games.checkers.checkers_utils import verify_game as verify_checkers_game
-from boardGPT.games.game_interface import GameInterface
+from .games.othello.othello_simulator import OthelloGame
+from .games.othello.othello_utils import verify_game as verify_othello_game
+from .games.checkers.checkers_simulator import CheckersGame
+from .games.checkers.checkers_utils import verify_game as verify_checkers_game
+from .games.game_interface import GameInterface
 
 
 def othello(moves_str: Union[str, List[str]]) -> OthelloGame:

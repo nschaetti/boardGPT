@@ -18,8 +18,15 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 # Imports
 from .gptboard import GameGPT
+from .game_autoencoder import GameAutoEncoder
+from .tokenizer import build_vocab, build_tokenizer
+from .utils import save_checkpoint
 
 # ALL
 __all__ = [
-    'GameGPT'
+    'GameGPT',
+    'GameAutoEncoder',
+    'build_vocab',
+    'build_tokenizer',
+    'save_checkpoint'
 ]

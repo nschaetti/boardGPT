@@ -761,6 +761,8 @@ def estimate_loss(
     
     model.train()
     return out
+# end def estimate_loss
+
 
 def get_lr(it, config):
     """
@@ -788,6 +790,8 @@ def get_lr(it, config):
     assert 0 <= decay_ratio <= 1
     coeff = 0.5 * (1.0 + math.cos(math.pi * decay_ratio))  # Coeff ranges 0..1
     return config['min_lr'] + coeff * (config['learning_rate'] - config['min_lr'])
+# end def get_lr
+
 
 def setup_optimizer(
         model: GPT,
@@ -867,6 +871,9 @@ def save_checkpoint(
 def infinite_loader(
         dataloader: torch.utils.data.DataLoader
 ):
+    """
+    Infinite loader iterator.
+    """
     while True:
         for batch in dataloader:
             X, Y = batch
