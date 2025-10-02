@@ -125,6 +125,7 @@ def initialize_model(
         bias=config.bias,
         vocab_size=None,
         dropout=config.dropout,
+        n_latent_token=config.n_latent_token,
         n_latent=config.n_latent,
     )
 
@@ -192,9 +193,8 @@ def initialize_model(
 @torch.no_grad()
 def estimate_loss(
         model,
-        iter_data,
-        dataset,
-        tokenizer: PreTrainedTokenizerFast,
+        val_iter_data,
+        train_iter_data,
         ctx,
         config,
         device
@@ -205,7 +205,8 @@ def estimate_loss(
 
     Args:
         model: The model to evaluate
-        iter_data: The iteration data to use
+        train_iter_data: The training data iterator
+        val_iter_data: The iteration data to use
         dataset: The dataset to use
         tokenizer: The tokenizer to use
         ctx: Context manager for mixed precision
@@ -222,6 +223,13 @@ def estimate_loss(
     for split in ['train', 'val']:
         losses = torch.zeros(config.eval_iters)
 
+        # Iter data
+        iter_data = train_iter_data if split == 'train' else val_iter_data
+
+        # Error
+        error_count = 0
+        error_total = 0
+
         # For each eval iterations
         for k in range(config.eval_iters):
             # Use the appropriate data loading function based on the configuration
@@ -232,11 +240,17 @@ def estimate_loss(
                 logits, loss = model(idx=X, targets=X)
             # end with
 
+            # Count reconstruction error
+            pred = logits.argmax(dim=-1)
+            error_count += (pred != X).sum().item()
+            error_total += X.nelement()
+
             # Keep loss
             losses[k] = loss.item()
         # end for
 
         out[split] = losses.mean()
+        out[f"{split}_error_rate"] = error_count / error_total
     # end for
 
     model.train()
@@ -340,9 +354,8 @@ def main():
             # Estimate loss
             losses = estimate_loss(
                 model=model,
-                iter_data=val_data_iter,
-                dataset=val_dataloader.dataset,
-                tokenizer=tokenizer,
+                train_iter_data=data_iter,
+                val_iter_data=val_data_iter,
                 ctx=ctx,
                 config=config,
                 device=device
@@ -350,7 +363,9 @@ def main():
 
             # Log eval
             eval_log(
-                f"step {iter_num}: train loss {losses['train']:.4f}, val loss {losses['val']:.4f}"
+                f"step {iter_num}: train loss {losses['train']:.4f}, val loss {losses['val']:.4f}, "
+                f"train error rate: {losses['train_error_rate']*100}, "
+                f"val error rate: {losses['val_error_rate']*100}"
             )
 
             # Log to wandb if enabled
@@ -361,7 +376,8 @@ def main():
                 }
 
                 # Log invalid move ratio if available
-                # log_data["val/IMR"] = losses['IMR']
+                log_data["train/error_rate"] = losses['train_error_rate']
+                log_data["val/error_rate"] = losses['val_error_rate']
                 wandb.log(log_data)
             # end if
 
@@ -431,12 +447,22 @@ def main():
 
             # Calculate model flops utilization (MFU)
             if local_iter_num >= 5:  # Let the training loop settle a bit
-                mfu = raw_model.estimate_mfu(config['batch_size'] * gradient_accumulation_steps, dt)
+                mfu = raw_model.estimate_mfu(
+                    n_layer=config.n_layer,
+                    n_head=config.n_head,
+                    n_embd=config.n_embd,
+                    n_latent=config.n_latent,
+                    n_latent_token=config.n_latent_token,
+                    block_size=config.block_size,
+                    fwdbwd_per_iter=config['batch_size'] * gradient_accumulation_steps,
+                    dt=dt
+                )
                 running_mfu = mfu if running_mfu == -1.0 else 0.9 * running_mfu + 0.1 * mfu
             # end if
 
             train_log(
-                f"iter {iter_num:04d}: loss {lossf:02.4f}, time {dt * 1000:05.2f}ms, mfu {running_mfu * 100:04.2f}%")
+                f"iter {iter_num:04d}: loss {lossf:02.4f}, time {dt * 1000:05.2f}ms, mfu {running_mfu * 100:04.2f}%"
+            )
 
             if config['wandb_log'] and master_process:
                 wandb.log({

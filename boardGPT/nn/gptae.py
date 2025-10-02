@@ -28,6 +28,7 @@ class GPTAEConfig:
     n_head = 8
     dropout = 0.1
     bias = False
+    n_latent_token = 2
     n_latent = 32
 # end Config
 
@@ -62,10 +63,16 @@ class GPTAE(nn.Module):
         )
 
         # Projection to latent space (per token)
-        self.to_latent = nn.Linear(config.n_embd, config.n_latent)
+        self.to_latent_token = nn.Linear(config.n_embd, config.n_latent_token)
 
-        # Projection from latent
-        self.from_latent = nn.Linear(config.n_latent, config.n_embd)
+        # Projection to latent space
+        self.to_latent = nn.Linear(config.n_latent_token * config.block_size, config.n_latent)
+
+        # Projection from the latent space
+        self.from_latent = nn.Linear(config.n_latent, config.n_latent_token * config.block_size)
+
+        # Projection from latent (per token)
+        self.from_latent_token = nn.Linear(config.n_latent_token, config.n_embd)
 
         # Create transformer decoder components
         self.decoder = nn.ModuleDict(
@@ -80,6 +87,77 @@ class GPTAE(nn.Module):
         # --- Output layer ---
         self.output_head = nn.Linear(config.n_embd, config.vocab_size)
     # end def __init__
+
+    def get_num_params(self, non_embedding=True):
+        """
+        Return the number of parameters in the model.
+
+        For non-embedding count (default), the position embeddings get subtracted.
+        The token embeddings would too, except due to the parameter sharing these
+        params are actually used as weights in the final layer, so we include them.
+
+        Args:
+            non_embedding (bool): Whether to exclude embedding parameters from the count
+
+        Returns:
+            int: Number of parameters
+        """
+        n_params = sum(p.numel() for p in self.parameters())
+        if non_embedding:
+            n_params -= self.encoder.wpe.weight.numel()
+            n_params -= self.decoder.wpe.weight.numel()
+        # end if
+        return n_params
+    # end def get_num_params
+
+    def estimate_mfu(
+            self,
+            n_layer: int,
+            n_head: int,
+            n_embd: int,
+            n_latent_token: int,
+            n_latent: int,
+            block_size: int,
+            fwdbwd_per_iter,
+            dt
+    ):
+        """
+        Estimate model flops utilization (MFU) in units of A100 bfloat16 peak FLOPS.
+
+        This method calculates how efficiently the model is using the available
+        computational resources during training.
+
+        Args:
+            module (nn.Module): Module whose parameters to configure
+            n_layer (int): Number of layers
+            n_head (int): Number of heads
+            n_embd (int): Number of embeddings
+            n_latent_token (int): Number of tokens
+            n_latent (int): Number of latent variables
+            block_size (int): Block size
+            fwdbwd_per_iter (int): Number of forward-backward passes per iteration
+            dt (float): Time per iteration in seconds
+
+        Returns:
+            float: Model FLOPs utilization as a fraction of theoretical peak
+        """
+        # First estimate the number of flops we do per iteration.
+        # See PaLM paper Appendix B as ref: https://arxiv.org/abs/2204.02311
+        N = self.get_num_params()
+        L, H, Q, T = n_layer, n_head, n_embd // n_head, block_size
+        flops_per_token = 6 * N + 12 * L * H * Q * T
+        flops_per_token *= 2
+        flops_per_token += n_embd * n_latent_token * 2
+        flops_per_token += n_latent * n_latent_token * 2
+        flops_per_fwdbwd = flops_per_token * T
+        flops_per_iter = flops_per_fwdbwd * fwdbwd_per_iter
+
+        # Express our flops throughput as ratio of A100 bfloat16 peak flops
+        flops_achieved = flops_per_iter * (1.0 / dt)  # per second
+        flops_promised = 312e12  # A100 GPU bfloat16 peak flops is 312 TFLOPS
+        mfu = flops_achieved / flops_promised
+        return mfu  # end def estimate_mfu
+    # end def estimate_mfu
 
     def forward_transformer(
             self,
@@ -174,10 +252,21 @@ class GPTAE(nn.Module):
         )
 
         # Compression
-        z = self.to_latent(x)  # (B, L, n_latent)
+        z = self.to_latent_token(x)  # (B, L, n_latent)
 
-        # Expansion
-        x = self.from_latent(z)  # (B, L, 512)
+        # Size
+        B, L, n_latent_token = z.shape
+
+        # Compression 2
+        z = z.view(B, L * n_latent_token)
+        z = self.to_latent(z)
+
+        # Expansion 1
+        x = self.from_latent(z)
+        x = x.view(B, L, n_latent_token)
+
+        # Expansion 2
+        x = self.from_latent_token(x)  # (B, L, 512)
 
         # Decoder
         x = self.forward_decoder(x)  # (B, L, 512)
@@ -187,6 +276,33 @@ class GPTAE(nn.Module):
 
         return logits
     # end def forward
+
+    def encode(self, idx: torch.LongTensor):
+        """
+        Encode the input sequence.
+
+        Args:
+            idx (torch.LongTensor): Input sequence indices.
+
+        Returns:
+            logits: FloatTensor (batch, seq_len, vocab_size)
+        """
+        # Encoder
+        x = self.forward_transformer(
+            module=self.encoder,
+            idx=idx
+        )
+
+        # Compression
+        z = self.to_latent_token(x)  # (B, L, n_latent)
+
+        # Size
+        B, L, n_latent_token = z.shape
+
+        # Compression 2
+        z = z.view(B, L * n_latent_token)
+        return self.to_latent(z)
+    # end encode
 
 # end class GPTAE
 

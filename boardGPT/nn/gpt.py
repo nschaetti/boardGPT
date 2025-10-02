@@ -70,6 +70,7 @@ class GPTConfig:
     n_head: int = 12
     n_embd: int = 768
     dropout: float = 0.0
+    n_latent_token: Optional[int] = None
     n_latent: Optional[int] = None
     bias: bool = True  # True: bias in Linears and LayerNorms, like GPT-2. False: a bit better and faster
 
@@ -170,9 +171,9 @@ class GPT(nn.Module):
         """
         n_params = sum(p.numel() for p in self.parameters())
         if non_embedding:
-            n_params -= self.transformer.wpe.weight.numel()  # end if
+            n_params -= self.transformer.wpe.weight.numel()
         # end if
-        return n_params  # end def get_num_params
+        return n_params
     # end def get_num_params
 
     def _init_weights(self, module):
