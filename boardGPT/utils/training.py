@@ -1,5 +1,4 @@
-
-
+import inspect
 import json
 
 # Imports
@@ -180,11 +179,12 @@ def setup_optimizer(
     scaler = torch.amp.GradScaler(device=device_type)
 
     # Set up the optimizer
-    optimizer, num_decay_params, num_nodecay_params = model.configure_optimizers(
-        config['weight_decay'],
-        config['learning_rate'],
-        (config['beta1'], config['beta2']),
-        device_type
+    optimizer, num_decay_params, num_nodecay_params = configure_optimizers(
+        module=model,
+        weight_decay=config['weight_decay'],
+        learning_rate=config['learning_rate'],
+        betas=(config['beta1'], config['beta2']),
+        device_type=device_type
     )
 
     # Load optimizer state if checkpoint is provided
@@ -315,4 +315,56 @@ def get_lr(it, config):
 # end def get_lr
 
 
+def configure_optimizers(
+        module,
+        weight_decay,
+        learning_rate,
+        betas,
+        device_type
+):
+    """
+    Configure the optimizer for training.
+
+    This method sets up an AdamW optimizer with weight decay applied only to
+    appropriate parameters (weights but not biases or layer norms).
+
+    Args:
+        module (nn.Module): Module whose parameters to configure
+        weight_decay (float): Weight decay coefficient
+        learning_rate (float): Learning rate
+        betas (tuple): Adam betas parameters (β1, β2)
+        device_type (str): Device type ('cuda' or 'cpu')
+
+    Returns:
+        torch.optim.AdamW: Configured optimizer
+    """
+    # Start with all of the candidate parameters
+    param_dict = {pn: p for pn, p in module.named_parameters()}
+
+    # Filter out those that do not require grad
+    param_dict = {pn: p for pn, p in param_dict.items() if p.requires_grad}
+
+    # Create optim groups. Any parameter that is 2D will be weight decayed, otherwise no.
+    # i.e. all weight tensors in matmuls + embeddings decay, all biases and layernorms don't.
+    decay_params = [p for n, p in param_dict.items() if p.dim() >= 2]
+    nodecay_params = [p for n, p in param_dict.items() if p.dim() < 2]
+    optim_groups = [
+        {'params': decay_params, 'weight_decay': weight_decay},
+        {'params': nodecay_params, 'weight_decay': 0.0}
+    ]
+
+    num_decay_params = sum(p.numel() for p in decay_params)
+    num_nodecay_params = sum(p.numel() for p in nodecay_params)
+    # print(f"num decayed parameter tensors: {len(decay_params)}, with {num_decay_params:,} parameters")
+    # print(f"num non-decayed parameter tensors: {len(nodecay_params)}, with {num_nodecay_params:,} parameters")
+
+    # Create AdamW optimizer and use the fused version if it is available
+    fused_available = 'fused' in inspect.signature(torch.optim.AdamW).parameters
+    use_fused = fused_available and device_type == 'cuda'
+    extra_args = dict(fused=True) if use_fused else dict()
+    optimizer = torch.optim.AdamW(optim_groups, lr=learning_rate, betas=betas, **extra_args)
+    # print(f"using fused AdamW: {use_fused}")
+
+    return optimizer, num_decay_params, num_nodecay_params
+# end def configure_optimizers
 

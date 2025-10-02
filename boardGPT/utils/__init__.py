@@ -16,7 +16,14 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 
 from .models import load_safetensors
-from .training import TrainingConfig, load_config, setup_training_environment, get_lr, setup_optimizer
+from .training import (
+    TrainingConfig,
+    load_config,
+    setup_training_environment,
+    get_lr,
+    setup_optimizer,
+    configure_optimizers
+)
 from .viz import plot_attention_matrix, plot_heads_attention, show_linear_probe_samples
 from .logging import (
     info, warning, error, debug, success,

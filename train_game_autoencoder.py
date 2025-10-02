@@ -13,39 +13,29 @@ import yaml
 from contextlib import nullcontext
 from typing import List, Dict, Any, Optional
 
-import numpy as np
 import torch
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.distributed import init_process_group, destroy_process_group
 
-from tokenizers import Tokenizer
-from tokenizers.models import WordLevel
 from transformers import PreTrainedTokenizerFast
-from tokenizers.pre_tokenizers import Whitespace
 
 # BoardGPT
 from boardGPT.datasets import (
-    load_othello_data_files,
-    GameDataset,
     get_dataloader,
-    collate_fn,
     infinite_loader
 )
 
 from boardGPT.models import GameAutoEncoder, build_vocab, build_tokenizer, save_checkpoint
 from boardGPT.nn import GPTConfig, GPT
-from boardGPT.validation.metrics import is_valid_game_sequence, invalid_move_rate
+# from boardGPT.validation.metrics import is_valid_game_sequence, invalid_move_rate
 from boardGPT.utils import (
     info,
-    error,
-    warning,
     train_log,
     eval_log,
     TrainingConfig,
-    load_config,
     setup_training_environment,
     get_lr,
-    setup_optimizer,
+    setup_optimizer
 )
 
 
@@ -134,7 +124,8 @@ def initialize_model(
         block_size=config.block_size,
         bias=config.bias,
         vocab_size=None,
-        dropout=config.dropout
+        dropout=config.dropout,
+        n_latent=config.n_latent,
     )
 
     # Vocab size
@@ -359,7 +350,7 @@ def main():
 
             # Log eval
             eval_log(
-                f"step {iter_num}: train loss {losses['train']:.4f}, val loss {losses['val']:.4f}, imr {losses['IMR']:.4f}"
+                f"step {iter_num}: train loss {losses['train']:.4f}, val loss {losses['val']:.4f}"
             )
 
             # Log to wandb if enabled
@@ -370,7 +361,7 @@ def main():
                 }
 
                 # Log invalid move ratio if available
-                log_data["val/IMR"] = losses['IMR']
+                # log_data["val/IMR"] = losses['IMR']
                 wandb.log(log_data)
             # end if
 
@@ -400,7 +391,7 @@ def main():
 
             # Forward pass
             with ctx:
-                _, logits, loss, _ = model(idx=X, targets=X)
+                logits, loss = model(idx=X, targets=X)
 
                 # Scale the loss to account for gradient accumulation
                 loss = loss / gradient_accumulation_steps

@@ -70,6 +70,7 @@ class GPTConfig:
     n_head: int = 12
     n_embd: int = 768
     dropout: float = 0.0
+    n_latent: Optional[int] = None
     bias: bool = True  # True: bias in Linears and LayerNorms, like GPT-2. False: a bit better and faster
 
 # end class GPTConfig
@@ -481,6 +482,7 @@ class GPT(nn.Module):
 
         return model
     # end def from_pretrained
+
     def configure_optimizers(
             self,
             weight_decay,
