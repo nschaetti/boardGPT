@@ -15,14 +15,14 @@ num_samples: -1
 ood_perc: 0.0                   # Ratio of generated samples on the fly
 
 # wandb logging settings
-wandb_log: false                             # Whether to use wandb logging (disabled by default)
+wandb_log: true                             # Whether to use wandb logging (disabled by default)
 wandb_project: 'othello-gpt'                # Project name for wandb
 wandb_run_name: 'synthetic-othello-ae-run1'    # Run name for wandb
 
 # Data settings
 board_game: "othello"
-gradient_accumulation_steps: 2        # Used to simulate larger batch sizes (5 * 8)
-batch_size: 768                         # If gradient_accumulation_steps > 1, this is the micro-batch size
+gradient_accumulation_steps: 1        # Used to simulate larger batch sizes (5 * 8)
+batch_size: 1024                         # If gradient_accumulation_steps > 1, this is the micro-batch size
 block_size: 60                         # Context size for the model
 
 # Model architecture settings
@@ -32,7 +32,8 @@ n_head: 8                       # Number of attention heads
 n_embd: 512                     # Embedding dimension
 dropout: 0.0                    # Dropout rate (0 for pretraining, try 0.1+ for finetuning)
 bias: false                     # Whether to use bias in LayerNorm and Linear layers
-n_latent: 2                     # Size of latent space
+n_latent_token: 8               # Size of latent space
+n_latent: 256
 
 # Optimizer settings (AdamW)
 learning_rate: 6.0e-4           # Maximum learning rate

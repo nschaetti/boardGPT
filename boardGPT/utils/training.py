@@ -269,8 +269,10 @@ def setup_training_environment(config):
     torch.manual_seed(1337 + seed_offset)
 
     # Enable TF32 precision on CUDA devices (faster and usually sufficient precision)
-    torch.backends.cudnn.conv.fp32_precision = 'tf32'
-    torch.backends.cuda.matmul.fp32_precision = 'ieee'
+    # torch.backends.cudnn.conv.fp32_precision = 'tf32'
+    # torch.backends.cuda.matmul.fp32_precision = 'ieee'
+    torch.backends.cuda.matmul.allow_tf32 = True
+    torch.backends.cudnn.allow_tf32 = True
 
     # Determine a device type for later use
     device_type = 'cuda' if 'cuda' in device else 'cpu'
