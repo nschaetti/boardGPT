@@ -218,14 +218,14 @@ class GPT(nn.Module):
             temperature (float): Sampling temperature (1.0 = no change, <1.0 = less random, >1.0 = more random)
             top_k (int, optional): If specified, only sample from the top k most probable tokens
             recorder (ActivationRecorder): Recorder to record moves
-            to_return (List[str]): List of informations to return.
+            to_return (List[str]): List of information to return.
 
         Returns:
             torch.Tensor: Generated token indices of shape (batch_size, seq_len + max_new_tokens)
         """
         ret_list = []
         for _ in range(max_new_tokens):
-            # If the sequence context is growing too long we must crop it at block_size
+            # If the sequence context is growing too long, we must crop it at block_size
             idx_cond = idx if idx.size(1) <= self.config.block_size else idx[:, -self.config.block_size:]
 
             # Forward the model to get the logits for the index in the sequence
