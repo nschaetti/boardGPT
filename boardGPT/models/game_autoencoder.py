@@ -33,6 +33,24 @@ from boardGPT.nn import GPTAE
 
 class GameAutoEncoder(GPTAE):
 
+     # Encode a list of indices
+     def encode_indices(self, idx: torch.LongTensor) -> torch.Tensor:
+          """
+          Encode a list of indices.
+          """
+          if idx.dim() == 1:
+               idx = idx.unsqueeze(0)
+          # end if
+
+          # Encode idx
+          with torch.no_grad():
+               enc = self.encode(idx)
+          # end with
+
+          # Encode idx
+          return enc
+     # end def encode_indices
+
      # Encode a list of moves
      def encode_moves(
              self,
@@ -71,6 +89,54 @@ class GameAutoEncoder(GPTAE):
           # Encode idx
           return enc
      # end encode_moves
+
+     # Decode a game embedding
+     def decode_moves(
+             self,
+             emb: torch.Tensor,
+             tokenizer: AutoTokenizer
+     ):
+          """
+          Decode an embedding
+          """
+          if emb.ndim == 1:
+               emb = emb.unsqueeze(0)
+          # end if
+
+          # Decode tensor
+          with torch.no_grad():
+               logits = self.decode(emb)
+          # end with
+
+          # Get highest prob. token
+          idx = torch.argmax(logits, dim=-1)
+
+          # To move tokens
+          tokens = tokenizer.decode(idx[0].cpu().tolist())
+
+          return tokens
+     # end def decode_moves
+
+     # Decode embedding to indices
+     def decode_indices(
+             self,
+             emb: torch.Tensor
+     ) -> torch.LongTensor:
+          """
+          Decode an embedding
+          """
+          if emb.ndim == 1:
+               emb = emb.unsqueeze(0)
+          # end if
+
+          # Decode tensor
+          with torch.no_grad():
+               logits = self.decode(emb)
+          # end with
+
+          # Get highest prob. token
+          return torch.argmax(logits, dim=-1).long()
+     # end def decode_indices
 
      def forward(
              self,

@@ -87,7 +87,7 @@ def verify_game(moves: List[str]) -> Tuple[bool, List[str]]:
 # end def verify_game
 
 
-def game_to_board(moves: List[str]) -> List[int]:
+def game_to_board(moves: List[str]) -> np.array:
     """
     Transform a game (as a list of str) into a board representation as a list of int.
     

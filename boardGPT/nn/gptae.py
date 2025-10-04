@@ -314,7 +314,7 @@ class GPTAE(nn.Module):
             idx (torch.LongTensor): Input sequence indices.
 
         Returns:
-            logits: FloatTensor (batch, seq_len, vocab_size)
+            Encoding vector (B, L, n_latent_token)
         """
         assert idx.ndim == 2, f"idx must have shape [batch_size, seq_len], got {idx.shape}"
 
@@ -337,6 +337,42 @@ class GPTAE(nn.Module):
         z = z.view(B, L * n_latent_token)
         return self.to_latent(z)
     # end encode
+
+    def decode(self, emb: torch.Tensor):
+        """
+        Decode an embedding
+
+        Args:
+            emb: torch.Tensor,
+
+        Returns:
+            logits: FloatTensor (batch, seq_len, vocab_size)
+        """
+        assert emb.ndim == 2, f"emb must have shape [batch_size, {self.config.n_latent}], got {emb.shape}"
+
+        # To device
+        emb = emb.to(next(self.parameters()).device)
+
+        # Size
+        B, _ = emb.shape
+
+        # From latent to latent token
+        x = self.from_latent(emb)
+
+        # View
+        x = x.view(B, self.config.block_size, self.config.n_latent_token)
+
+        # From latent token
+        x = self.from_latent_token(x)
+
+        # Decode
+        x = self.forward_decoder(x)
+
+        # Output logits
+        logits = self.output_head(x)  # (B, L, vocab_size)
+
+        return logits
+    # end decode
 
 # end class GPTAE
 

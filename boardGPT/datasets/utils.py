@@ -18,6 +18,8 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 import os
 import pickle
 from typing import Tuple, List, Union
+
+import numpy as np
 import torch
 from transformers import PreTrainedTokenizerFast
 
@@ -109,6 +111,28 @@ def collate_fn(batch, tokenizer: PreTrainedTokenizerFast):
 
     return X, Y
 # end def collate_fn
+
+
+def collate_fn_board(batch, tokenizer: PreTrainedTokenizerFast):
+    """
+    Convert a batch of raw strings into padded tensors.
+    """
+    moves = [m for (m, _) in batch]
+    enc = tokenizer(
+        moves,
+        return_tensors="pt"
+    )
+
+    # Board states
+    board_states = [bs for (_, bs) in batch]
+    board_states = np.array(board_states)
+    Y = torch.LongTensor(board_states)
+
+    # Split into X and Y
+    X = enc["input_ids"]
+
+    return X, Y
+# end def collate_fn_board
 
 
 def get_dataloader(

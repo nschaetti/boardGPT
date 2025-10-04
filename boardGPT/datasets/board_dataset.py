@@ -20,25 +20,28 @@ import os
 import pickle
 import random
 import glob
-from typing import List
+from typing import List, Callable
 
 import numpy as np
 from torch.utils.data import Dataset
+
+from .game_dataset import GameDataset
 
 
 MAP_START_INDEX = 1
 
 
 # Board Dataset
-class BoardDataset(Dataset):
+class BoardDataset(GameDataset):
     """
-    Board Dataset
+    Game Dataset (to learn board state)
     """
 
     # Constructor
     def __init__(
             self,
             data_dir: str,
+            board_func: Callable,
             max_len: int = 60,
             block_size: int = 60,
             split: str = 'train',
@@ -51,6 +54,7 @@ class BoardDataset(Dataset):
 
         Args:
              data_dir: path to Othello dataset
+             board_func: function that takes board state as input and returns board state as output
              max_len (int, optional): max length of game sequence
              block_size (int, optional): block size of game sequence
              split: train or test
@@ -59,73 +63,25 @@ class BoardDataset(Dataset):
              padding_int (int): padding integer for Othello dataset
         """
         # Super
-        super().__init__()
+        super().__init__(
+            data_dir=data_dir,
+            max_len=max_len,
+            block_size=block_size,
+            split=split,
+            ood_perc=ood_perc,
+            num_samples=num_samples,
+            padding_int=padding_int
+        )
 
         # Properties
-        self.data_dir = data_dir
-        self.max_len = max_len
-        self.block_size = block_size
-        self.ood_perc = ood_perc
-        self.split = split
-        self.num_samples = num_samples
-        self.padding_int = padding_int
-
-        # Load the dataset
-        self.data = self.load_data()
+        self.board_func = board_func
     # end def __init__
 
     # region PUBLIC
 
-    def load_data(self) -> List[np.array]:
-        """
-        Load game dataset.
-        """
-        # Data dir for the specified split (train or val)
-        data_dir = os.path.join(self.data_dir, self.split)
-
-        # Pattern for bin files
-        pattern = "*.bin"
-
-        # Find all matching bin files
-        bin_files = glob.glob(os.path.join(data_dir, pattern))
-
-        if not bin_files:
-            # If no bin files found in the specified directory, print an error message
-            raise FileNotFoundError(
-                f"No bin files found in {data_dir}. "
-                f"Error: No bin files found in {data_dir}. Make sure the data directory contains "
-                f"'train' and 'val' folders with bin files."
-            )  # end if
-        else:
-            # Load all bin files and combine their data
-            game_sequences = []
-            for bin_file in bin_files:
-                with open(bin_file, 'rb') as f:
-                    sequences = pickle.load(f)
-                    game_sequences.extend(sequences)
-                # end with
-            # end for
-        # end if
-
-        # Limit samples
-        if self.num_samples > 0:
-            game_sequences = game_sequences[:self.num_samples]
-        # end if
-
-        # Store in the appropriate global variable
-        return game_sequences
-    # end def load_data
-
     # endregion PUBLIC
 
     # region OVERWRITE
-
-    def __len__(self):
-        """
-        Return length of dataset
-        """
-        return len(self.data)  # end def __len__
-    # end __len__
 
     def __getitem__(self, idx):
         """
@@ -139,20 +95,20 @@ class BoardDataset(Dataset):
 
         # Get subsequence and pad
         x = game_sequence[:ix]
-        y = game_sequence[:ix + 1]
 
         # Decode
         x = [s.decode() for s in x]
-        y = [s.decode() for s in y]
+
+        # Transform into board
+        # Create an OthelloGame object with the moves applied
+        board_state = self.board_func(x)
 
         x = ["<pad>"] * (self.block_size - ix) + x
-        y = ["<pad>"] * (self.block_size - ix - 1) + y
 
         # Transform in text
         x = " ".join(x)
-        y = " ".join(y)
 
-        return x, y
+        return x, board_state
     # end __getitem__
 
     # endregion OVERWRITE

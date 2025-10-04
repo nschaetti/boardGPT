@@ -21,7 +21,7 @@ import math
 import inspect
 from dataclasses import dataclass
 from distutils.command.config import config
-from typing import Dict, Tuple, List, Optional, Any
+from typing import Dict, Tuple, List, Optional, Any, Union
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
@@ -34,39 +34,36 @@ class GameGPT(GPT):
      # Generate moves
      def generate_moves(
              self,
-             sequence: List[str],
+             idx: Union[List[int], torch.LongTensor],
              max_new_tokens: int,
-             device: torch.device,
-             add_pos: bool = True,
              temperature: float = 1.0,
              top_k: int = None,
              recorder: ActivationRecorder = None,
-             to_return: List[str] = None  # end def generate_moves
+             to_return: List[str] = None,
+             device: str = 'cuda' ,
      ) -> Tuple[List[str], Any]:
           """
           Generate moves from a sequence.
 
           Args:
-              sequence (List[str]): Sequence to generate
+              idx (List[int]): List of integer token
               max_new_tokens (int): Maximum number of tokens to generate
               device (torch.device): Device to use
-              add_pos (bool): If True, add position to sequence
               temperature (float): Temperature parameter
               top_k (int): If specified, only generate tokens with this many tokens
               device (torch.device): Device to use
               recorder (ActivationRecorder): Recorder to record moves
               to_return (List[str]): List of information to return.
           """
-          # Transform sequence to idx
-          idx = GPT.to_idx(sequence, add_pos=add_pos)
-
-          # Make tensor
-          move_idx = torch.LongTensor(idx).unsqueeze(0).to(device)
+          # To tensor
+          if type(idx) is int:
+               idx = torch.LongTensor(idx)
+          # end if
 
           # Generate tokens
           # gen_seq is (seq_len + max_new_token)
           gen_seq, ret_list = self.generate(
-               idx=move_idx,
+               idx=idx,
                max_new_tokens=max_new_tokens,
                temperature=temperature,
                top_k=top_k,
@@ -76,10 +73,7 @@ class GameGPT(GPT):
           gen_seq = gen_seq[0]
 
           # Transform into str sequence
-          return (
-               GPT.to_moves(gen_seq.tolist()),
-               ret_list
-          )
+          return gen_seq
      # end generate_tokens
 
      def forward(

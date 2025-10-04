@@ -952,7 +952,6 @@ def main():
     # Use the appropriate data loading function based on the configuration
     vocab = build_vocab(output=config.out_dir)
     tokenizer = build_tokenizer(vocab=vocab, output=config.out_dir)
-
     dataloader = get_dataloader(split="train", config=config, tokenizer=tokenizer)
     val_dataloader = get_dataloader(split="val", config=config, tokenizer=tokenizer)
     val_data_iter = infinite_loader(val_dataloader)

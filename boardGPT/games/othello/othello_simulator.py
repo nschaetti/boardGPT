@@ -66,7 +66,7 @@ class OthelloBoard:
     # end __init__
 
     # Get flatten representation
-    def get_flattened_board_state(self):
+    def get_flattened_board_state(self) -> np.array:
         """
         Get flattened board state.
 
