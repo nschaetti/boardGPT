@@ -65,6 +65,16 @@ class OthelloBoard:
         self.current_history: List[Tuple[int, int, int]] = []
     # end __init__
 
+    # Get flatten representation
+    def get_flattened_board_state(self):
+        """
+        Get flattened board state.
+
+        Returns:
+        """
+        return np.array(self.board, dtype=np.int32).flatten()
+    # end get_flattened_board_state
+
     # Set pieces
     def set_piece(self, row: int, col: int, value: int) -> None:
         """
@@ -239,6 +249,13 @@ class OthelloGame(GameInterface):
     # end def __init__
 
     # region PUBLIC
+
+    def flattened_board_state(self) -> np.array:
+        """
+        Flatten the board state into a 1D list with each cell containing
+        """
+        return self.board.get_flattened_board_state()
+    # end def flattened_board_state
 
     def get_valid_moves(self) -> List[Tuple[int, int]]:
         """

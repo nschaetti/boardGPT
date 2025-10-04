@@ -118,10 +118,6 @@ class GameGPT(GPT):
                loss = None
           # end if
 
-          # Add
-          obj_to_return.append(logits)
-          obj_to_return.append(loss)
-
           return x, logits, loss, obj_to_return
      # end def forward
 

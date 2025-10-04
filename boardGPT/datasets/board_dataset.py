@@ -14,26 +14,25 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
-import collections
+
 # Imports
 import os
 import pickle
 import random
 import glob
-from typing import List, Tuple, Dict
+from typing import List
 
 import numpy as np
-import torch
 from torch.utils.data import Dataset
 
 
 MAP_START_INDEX = 1
 
 
-# Game Dataset
-class GameDataset(Dataset):
+# Board Dataset
+class BoardDataset(Dataset):
     """
-    Game Dataset
+    Board Dataset
     """
 
     # Constructor
@@ -158,5 +157,5 @@ class GameDataset(Dataset):
 
     # endregion OVERWRITE
 
-# end class GameDataset
+# end class BoardDataset
 

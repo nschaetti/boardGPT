@@ -22,14 +22,55 @@ import inspect
 from dataclasses import dataclass
 from distutils.command.config import config
 from typing import Dict, Tuple, List, Optional, Any
+from transformers import AutoTokenizer
 import torch
-import torch.nn as nn
 from torch.nn import functional as F
+from transformers import AutoTokenizer
+
 from boardGPT.nn.register import ActivationRecorder
 from boardGPT.nn import GPTAE
 
 
 class GameAutoEncoder(GPTAE):
+
+     # Encode a list of moves
+     def encode_moves(
+             self,
+             moves: str,
+             tokenizer: AutoTokenizer,
+             padding: bool = True,
+             pad_token: str = "<pad>",
+     ):
+          """
+          Encode moves
+
+          Args:
+               moves (str): A list of moves as a string
+               tokenizer (AutoTokenizer): Tokenizer to use to encode moves
+               padding (bool, optional): If True, pad moves before encoding
+               pad_token (str, optional): The token to use for padding
+          """
+          block_size = self.config.block_size
+          if padding and len(moves.split()) != block_size:
+               seq_len = len(moves.split())
+               moves = ' '.join([pad_token] * (block_size - seq_len)) + ' ' + moves
+          # end if
+
+          # To idx
+          idx = tokenizer(moves)['input_ids']
+
+          # To tensors
+          idx = torch.LongTensor(idx)
+          idx = torch.unsqueeze(idx, 0)
+
+          # Encode idx
+          with torch.no_grad():
+               enc = self.encode(idx)
+          # end with
+
+          # Encode idx
+          return enc
+     # end encode_moves
 
      def forward(
              self,

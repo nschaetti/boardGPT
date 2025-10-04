@@ -16,9 +16,12 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 
 # Imports
+from typing import List, Tuple, Optional
+import numpy as np
 import sys
 import os
-from typing import List, Tuple, Optional
+from matplotlib import pyplot as plt
+
 from .othello_simulator import OthelloGame
 
 
@@ -83,6 +86,7 @@ def verify_game(moves: List[str]) -> Tuple[bool, List[str]]:
     return len(invalid_moves) == 0, invalid_moves
 # end def verify_game
 
+
 def game_to_board(moves: List[str]) -> List[int]:
     """
     Transform a game (as a list of str) into a board representation as a list of int.
@@ -93,74 +97,72 @@ def game_to_board(moves: List[str]) -> List[int]:
     Returns:
         List[int]: Board representation as a 1D list where:
             - 0 = empty
-            - 1 = white
-            - 2 = black
+            - 1 = black
+            - 2 = white
             - The first entry is "a1", the second "a2", etc.
             
     Raises:
         ValueError: If a move is invalid for both players
     """
-    # Create a new Othello game
-    game = OthelloGame()
+    # Create an OthelloGame object with the moves applied
+    game = OthelloGame.load_moves(moves)
     
-    # Track the current player (Black starts in Othello)
-    current_player = game.BLACK
-    
-    # Replay the game by making each move
-    for move in moves:
-        try:
-            # Convert notation to coordinates
-            row, col = game.notation_to_coords(move)
-            
-            # Check if the move is valid for the current player
-            if not game.is_valid_move(row, col):
-                # If not valid for current player, switch player and check again
-                game.switch_player()
-                
-                # Check if the move is valid for the other player
-                if not game.is_valid_move(row, col):
-                    # Not valid for either player, raise an exception
-                    raise ValueError(f"Move {move} is invalid for both players")  # end if
-                # end if
-            # end if
-            
-            # Make the move
-            game.make_move(row, col)  # end try
-        except ValueError as e:
-            # Re-raise ValueError for invalid moves for both players
-            if "invalid for both players" in str(e):
-                raise  # end if
-            # Skip moves with invalid notation
-            continue  # end except
-        # end try-except
+    # Get board
+    return game.board.get_flattened_board_state()
+# end game_to_board
+
+
+def visualize_board(board: list):
+    """
+    Visualize an Othello board from its 1D list representation.
+
+    Args:
+        board (list[int]): 1D list of length 64 representing the board.
+            0 = empty, 1 = white, 2 = black
+    """
+    assert len(board) == 64, "Board must have 64 positions"
+
+    # Convert to 8x8 array
+    board_array = np.array(board).reshape(8, 8)
+
+    fig, ax = plt.subplots(figsize=(6, 6))
+
+    # Background grid (green board)
+    ax.set_facecolor((0.0, 0.6, 0.0))
+
+    # Draw grid lines
+    for i in range(9):
+        ax.plot([0, 8], [i, i], color="black", linewidth=1)
+        ax.plot([i, i], [0, 8], color="black", linewidth=1)
     # end for
-    
-    # Convert the 2D board to a 1D list in the required order
-    board_1d = []
-    for col in ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h']:
-        for row in range(game.SIZE):
-            # Position
-            pos = f"{col}{row+1}"
 
-            # Get the coordinate
-            r, c = game.notation_to_coords(pos)
-
-            # Get the piece at this position using the board's get_piece method
-            # Note: In OthelloGame, BLACK=1, WHITE=2, but the requirement is WHITE=1, BLACK=2
-            piece = game.board.get_piece(r, c)
-
-            # Convert from OthelloGame representation to required representation
-            if piece == game.BLACK:
-                board_1d.append(2)  # BLACK = 2  # end if
-            elif piece == game.WHITE:
-                board_1d.append(1)  # WHITE = 1  # end elif
-            else:
-                board_1d.append(0)  # EMPTY = 0  # end else
-            # end for
+    # Place pieces as circles
+    for r in range(8):
+        for c in range(8):
+            if board_array[r, c] == 1:  # white
+                circ = plt.Circle((c + 0.5, r + 0.5), 0.4, color="black", ec="black")
+                ax.add_patch(circ)
+            elif board_array[r, c] == 2:  # black
+                circ = plt.Circle((c + 0.5, r + 0.5), 0.4, color="white")
+                ax.add_patch(circ)
+            # end if
         # end for
     # end for
 
-    assert len(board_1d) == 64, f"Error: board representation must contain 64 output"
-    
-    return board_1d  # end def game_to_board
-# end game_to_board
+    # Set ticks for labels
+    ax.set_xticks(np.arange(0.5, 8.5, 1))
+    ax.set_yticks(np.arange(0.5, 8.5, 1))
+    ax.set_xticklabels(['a','b','c','d','e','f','g','h'])
+    ax.set_yticklabels(range(1, 9))
+
+    # Adjust axis
+    ax.set_xlim(0, 8)
+    ax.set_ylim(0, 8)
+    ax.invert_yaxis()  # to have row 1 at the top
+    ax.set_aspect('equal')
+
+    ax.set_title("Othello Board")
+
+    plt.show()
+# end def visualize_board
+

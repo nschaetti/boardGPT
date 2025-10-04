@@ -73,7 +73,6 @@ class GPTConfig:
     n_latent_token: Optional[int] = None
     n_latent: Optional[int] = None
     bias: bool = True  # True: bias in Linears and LayerNorms, like GPT-2. False: a bit better and faster
-
 # end class GPTConfig
 
 
@@ -279,7 +278,7 @@ class GPT(nn.Module):
         device = idx.device
 
         # Default to return
-        to_return = ["logits", "loss"] if to_return is None else to_return
+        to_return = [] if to_return is None else to_return
 
         # Object to return
         obj_to_return = []
@@ -340,10 +339,6 @@ class GPT(nn.Module):
         # If we are given some desired targets also calculate the loss
         logits = self.lm_head(x)
         # loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1), ignore_index=-1)
-
-        # Add
-        # obj_to_return.append(logits)
-        # obj_to_return.append(loss)
 
         return x, logits, obj_to_return
     # end def forward

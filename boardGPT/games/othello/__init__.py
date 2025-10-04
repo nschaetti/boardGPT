@@ -24,7 +24,11 @@ from .othello_simulator import (
     generate_othello_game
 )
 
-from .othello_utils import verify_game, game_to_board
+from .othello_utils import (
+    verify_game,
+    game_to_board,
+    visualize_board
+)
 
 __all__ = [
     "OthelloGame",
@@ -32,5 +36,7 @@ __all__ = [
     "create_move_mapping",
     "convert_ids_to_notation",
     "load_games",
-    "generate_othello_game"
+    "generate_othello_game",
+    "game_to_board",
+    "visualize_board"
 ]

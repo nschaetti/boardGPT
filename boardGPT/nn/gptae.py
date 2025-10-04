@@ -1,25 +1,19 @@
 
 
 # Imports
+import yaml
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-import math
-import inspect
 from dataclasses import dataclass
-from typing import Dict, Tuple, List, Optional, Any
-from torch.nn import functional as F
-import json
-import yaml
 from huggingface_hub import hf_hub_download
 from safetensors.torch import load_file
 
-from .hooks import HookPoint
+from . import GPTConfig
 from .layer_norm import LayerNorm
-from .block import Block, MLP, CausalSelfAttention
-from .register import ActivationRecorder
+from .block import Block
 
 
+@dataclass
 class GPTAEConfig:
     vocab_size = 61
     block_size = 60
@@ -87,6 +81,41 @@ class GPTAE(nn.Module):
         # --- Output layer ---
         self.output_head = nn.Linear(config.n_embd, config.vocab_size)
     # end def __init__
+
+    @classmethod
+    def from_pretrained(
+            cls,
+            repo_id: str,
+            revision: str = "main",
+            device: str = "cpu",
+            **kwargs
+    ):
+        """
+        Load a pretrained GPT-2 model from a HuggingFace.
+        """
+        # Download files
+        config_path = hf_hub_download(repo_id, filename="config.yaml", subfolder="safetensors", revision=revision)
+        weights_path = hf_hub_download(repo_id, filename="model.safetensors", subfolder="safetensors", revision=revision)
+
+        # Read the configuration
+        with open(config_path, "r") as f:
+            config = yaml.safe_load(f)
+        # end with
+
+        config = GPTConfig(**config)
+
+        # Instantiate the model
+        model = cls(
+            config=config,
+            **kwargs
+        )
+
+        # Load file
+        state_dict = load_file(weights_path, device=device)
+        model.load_state_dict(state_dict, strict=False)
+
+        return model, config
+    # end def load_pretrained
 
     def get_num_params(self, non_embedding=True):
         """
@@ -287,6 +316,11 @@ class GPTAE(nn.Module):
         Returns:
             logits: FloatTensor (batch, seq_len, vocab_size)
         """
+        assert idx.ndim == 2, f"idx must have shape [batch_size, seq_len], got {idx.shape}"
+
+        # To device
+        idx = idx.to(next(self.parameters()).device)
+
         # Encoder
         x = self.forward_transformer(
             module=self.encoder,

@@ -17,7 +17,7 @@ ood_perc: 0.0                   # Ratio of generated samples on the fly
 # wandb logging settings
 wandb_log: true                             # Whether to use wandb logging (disabled by default)
 wandb_project: 'othello-gpt'                # Project name for wandb
-wandb_run_name: 'synthetic-othello-ae-S'    # Run name for wandb
+wandb_run_name: 'synthetic-othello-ae-M'    # Run name for wandb
 
 # Data settings
 board_game: "othello"
@@ -61,3 +61,4 @@ pin_memory: true                # Pin data in memory
 shuffle: true                   # Shuffle training data
 drop_last: false                # Drop last batch
 
+12, "block_size": 60, "bias": false, "dropout": 0.0, "vocab_size": 61, "n_latent": 64, "n_latent_token": 16}
