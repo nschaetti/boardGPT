@@ -25,6 +25,7 @@ from .gptae import (
 )
 from .layer_norm import LayerNorm
 from .block import Block, MLP, CausalSelfAttention
+from .board_probes import BoardLinearProbe, BoardMLPProbe
 from .register import ActivationRecorder
 
 # All
@@ -37,5 +38,6 @@ __all__ = [
     "CausalSelfAttention",
     "Block",
     "MLP",
-    "ActivationRecorder"
+    "ActivationRecorder",
+
 ]
