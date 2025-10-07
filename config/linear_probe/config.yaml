@@ -2,47 +2,39 @@
 
 # I/O settings
 out_dir: 'out/linear_probe'         # Output directory for checkpoints and logs
-eval_interval: 5000                 # How often to evaluate the model
+eval_interval: 1000                 # How often to evaluate the model
 log_interval: 20                    # How often to log training progress
 eval_iters: 20                      # Number of batches to use for evaluation
-eval_only: false                    # If True, script exits right after the first eval
-always_save_checkpoint: true        # If True, always save a checkpoint after each eval
 
 # wandb logging settings
 wandb_log: true                             # Whether to use wandb logging (disabled by default)
 wandb_project: 'othello-gpt'                # Project name for wandb
-wandb_run_name: 'synthetic-othello-run1'    # Run name for wandb
+wandb_run_name: 'synthetic-othello-probe-run1'    # Run name for wandb
 
 # Data settings
-board_game: "othello"
-gradient_accumulation_steps: 1        # Used to simulate larger batch sizes (5 * 8)
 batch_size: 1024                         # If gradient_accumulation_steps > 1, this is the micro-batch size
-block_size: 61                         # Context size for the model
+board_size: 64
+n_classes: 3
+residual_size: 512
 
 # Model architecture settings
-vocab_size: 61                  # Vocabulary size
-n_layer: 8                      # Number of transformer layers
-n_head: 8                       # Number of attention heads
-n_embd: 512                     # Embedding dimension
-dropout: 0.0                    # Dropout rate (0 for pretraining, try 0.1+ for finetuning)
-bias: false                     # Whether to use bias in LayerNorm and Linear layers
+repo_id: "theartificialis/OthelloGPT-Synthetic-20m"     # Repository ID
+probe_type: linear                                      # Type of probe
+layer_i: 7
 
-# Optimizer settings (AdamW)
-learning_rate: 1.0e-4           # Maximum learning rate
-max_iters: 180000               # Total number of training iterations
+# Training
+num_workers: 8
+gradient_accumulation_steps: 1        # Used to simulate larger batch sizes (5 * 8)
+learning_rate: 1.0e-3           # Maximum learning rate
+n_iter: 20000               # Total number of training iterations
 weight_decay: 1.0e-1            # Weight decay coefficient
 beta1: 0.9                      # AdamW beta1 parameter
 beta2: 0.95                     # AdamW beta2 parameter
 grad_clip: 1.0                  # Clip gradients at this value (disable if == 0.0)
-
-# Learning rate decay settings
 decay_lr: true                  # Whether to decay the learning rate
-warmup_iters: 2000              # Number of warmup steps
-lr_decay_iters: 130000          # Should be ~= max_iters per Chinchilla
-min_lr: 1.0e-5                  # Minimum learning rate (~= learning_rate/10 per Chinchilla)
-
-# DDP settings
-backend: 'nccl'                 # Backend for distributed training ('nccl', 'gloo', etc.)
+warmup_iters: 5000              # Number of warmup steps
+lr_decay_iters: 10000          # Should be ~= max_iters per Chinchilla
+min_lr: 6.0e-5                  # Minimum learning rate (~= learning_rate/10 per Chinchilla)
 
 # System settings
 device: 'cuda'                  # Device to use ('cpu', 'cuda', 'cuda:0', 'cuda:1', 'mps' on macbooks)

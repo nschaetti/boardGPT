@@ -255,11 +255,11 @@ def main(args, config):
 
     # Set up wandb logging if enabled
     if config['wandb_log']:
-        assert args.wandb_project is not None, "WandB project must be provided."
-        assert args.wandb_run_name is not None, "WandB run name must be provided."
+        assert config['wandb_project'] is not None, "WandB project must be provided."
+        assert config['wandb_run_name'] is not None, "WandB run name must be provided."
         wandb.init(
-            project=args['wandb_project'],
-            name=args['wandb_run_name'],
+            project=config['wandb_project'],
+            name=config['wandb_run_name'],
             config=config
         )
     # end if
